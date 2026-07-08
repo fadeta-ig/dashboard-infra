@@ -13,6 +13,7 @@
   Status,
   TargetHealth,
 } from '@/lib/types';
+import { getMonitoringThresholds } from '@/lib/thresholds';
 
 export const PROMQL = {
   cpuUsage: '100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)',
@@ -63,19 +64,20 @@ export function roundMetric(value: number | null, digits = 2) {
 }
 
 export function getServerStatus(metrics: Omit<ServerMetrics, 'status'>): Status {
+  const thresholds = getMonitoringThresholds().server;
   const values = [metrics.cpuUsage, metrics.ramUsage, metrics.diskUsage];
   if (values.some((value) => value === null)) return 'unknown';
   if (
-    metrics.cpuUsage !== null && metrics.cpuUsage > 85 ||
-    metrics.ramUsage !== null && metrics.ramUsage > 85 ||
-    metrics.diskUsage !== null && metrics.diskUsage > 90
+    metrics.cpuUsage !== null && metrics.cpuUsage >= thresholds.cpuUsagePercent.critical ||
+    metrics.ramUsage !== null && metrics.ramUsage >= thresholds.ramUsagePercent.critical ||
+    metrics.diskUsage !== null && metrics.diskUsage >= thresholds.diskUsagePercent.critical
   ) {
     return 'critical';
   }
   if (
-    metrics.cpuUsage !== null && metrics.cpuUsage >= 70 ||
-    metrics.ramUsage !== null && metrics.ramUsage >= 75 ||
-    metrics.diskUsage !== null && metrics.diskUsage >= 80
+    metrics.cpuUsage !== null && metrics.cpuUsage >= thresholds.cpuUsagePercent.warning ||
+    metrics.ramUsage !== null && metrics.ramUsage >= thresholds.ramUsagePercent.warning ||
+    metrics.diskUsage !== null && metrics.diskUsage >= thresholds.diskUsagePercent.warning
   ) {
     return 'warning';
   }
@@ -254,3 +256,4 @@ export function buildSnmpDiscovery(series: PrometheusMetric[] | null): SnmpMetri
 export function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unexpected error';
 }
+

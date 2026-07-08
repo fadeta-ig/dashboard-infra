@@ -12,10 +12,12 @@ const mobileLinks = [
 
 export function Topbar() {
   return (
-    <header className="md:hidden h-16 border-b border-border bg-card flex items-center px-4 fixed top-0 left-0 w-full z-50">
+    <header className="md:hidden h-16 border-b border-border bg-white/95 backdrop-blur flex items-center px-4 fixed top-0 left-0 w-full z-50">
       <div className="flex items-center flex-1 min-w-0">
-        <Activity className="h-5 w-5 text-primary mr-2 flex-shrink-0" />
-        <span className="font-bold tracking-tight truncate">InfraDash</span>
+        <div className="h-8 w-8 rounded-md bg-primary text-primary-foreground flex items-center justify-center mr-2 flex-shrink-0">
+          <Activity className="h-4 w-4" />
+        </div>
+        <span className="font-bold tracking-tight truncate">Ubuntu WIG</span>
       </div>
       <nav className="flex gap-3 text-xs font-medium overflow-x-auto">
         {mobileLinks.map((item) => (

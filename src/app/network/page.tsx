@@ -12,7 +12,7 @@ type NetworkRangeResponse = { range: string; points: NetworkRangePoint[] };
 
 function TargetCard({ title, target, icon: Icon }: { title: string; target: NetworkTarget; icon: LucideIcon }) {
   return (
-    <div className="bg-card border border-border/60 rounded-lg p-6 shadow-sm flex flex-col items-center text-center">
+    <div className="panel-surface rounded-lg p-6 flex flex-col items-center text-center">
       <div className="p-3 bg-muted/70 rounded-md mb-4">
         <Icon className="h-6 w-6 text-primary" />
       </div>
@@ -117,7 +117,7 @@ export default function NetworkPage() {
     <div className="space-y-6 animate-fade-in animate-slide-up">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-primary">Network Health</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-primary">Network Monitoring</h1>
           <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2 font-medium">
             Overall Status: <StatusIndicator status={data.internetStatus} text={data.internetStatus} />
           </p>
@@ -143,7 +143,7 @@ export default function NetworkPage() {
         <TargetCard title="Cloudflare DNS" target={data.cloudflareDns} icon={Globe} />
       </div>
 
-      <section className="bg-card border border-border rounded-lg p-6 shadow-sm">
+      <section className="panel-surface rounded-lg p-6">
         <h2 className="text-lg font-semibold mb-4">Latency History (ms)</h2>
         <div className="h-[340px] w-full">
           <ResponsiveContainer width="100%" height="100%">
@@ -162,4 +162,5 @@ export default function NetworkPage() {
     </div>
   );
 }
+
 

@@ -84,7 +84,7 @@ export default function ServerPage() {
     <div className="space-y-6 animate-fade-in animate-slide-up">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-primary">Server Metrics</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-primary">Server Ubuntu</h1>
           <p className="text-sm text-muted-foreground mt-1 font-medium">CPU, RAM, disk, and load average for server-wig</p>
         </div>
         <div className="flex gap-2 bg-card p-1 rounded-md border border-border">
@@ -133,7 +133,7 @@ export default function ServerPage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <section className="bg-card border border-border rounded-lg p-6 shadow-sm">
+            <section className="panel-surface rounded-lg p-6">
               <h2 className="text-lg font-semibold mb-4">CPU & RAM Usage (%)</h2>
               <div className="h-[320px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -149,7 +149,7 @@ export default function ServerPage() {
               </div>
             </section>
 
-            <section className="bg-card border border-border rounded-lg p-6 shadow-sm">
+            <section className="panel-surface rounded-lg p-6">
               <h2 className="text-lg font-semibold mb-4">Load Average (1m)</h2>
               <div className="h-[320px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -169,4 +169,5 @@ export default function ServerPage() {
     </div>
   );
 }
+
 

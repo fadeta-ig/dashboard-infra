@@ -1,6 +1,6 @@
-﻿# InfraDash - Custom Prometheus Monitoring Dashboard
+﻿# Monitoring Server Ubuntu WIG
 
-InfraDash adalah dashboard monitoring internal berbasis Next.js App Router. Dashboard ini mengambil metrics dari Prometheus melalui backend Next.js Route Handlers, sehingga browser tidak pernah mengakses Prometheus atau exporter secara langsung.
+Monitoring Server Ubuntu WIG adalah dashboard monitoring internal berbasis Next.js App Router. Dashboard ini mengambil metrics dari Prometheus melalui backend Next.js Route Handlers, sehingga browser tidak pernah mengakses Prometheus atau exporter secara langsung.
 
 Dashboard ini tidak menggunakan Grafana, Wazuh, atau dashboard monitoring pihak ketiga.
 
@@ -49,10 +49,61 @@ Buat file `.env` di root project:
 PROMETHEUS_URL=http://127.0.0.1:9090
 DASHBOARD_BASIC_USER=admin-it
 DASHBOARD_BASIC_PASS=gunakan-password-panjang-yang-unik
+DASHBOARD_SESSION_SECRET=gunakan-secret-session-yang-berbeda
 ```
 
 Jangan commit file `.env`. Jangan tampilkan password, token, SNMP community, atau secret lain di UI.
 
+
+## Login dan Session
+
+Aplikasi memakai halaman `/login`, bukan popup Basic Auth browser. Username dan password tetap dibaca dari `DASHBOARD_BASIC_USER` dan `DASHBOARD_BASIC_PASS`, lalu server membuat cookie session `HttpOnly` bernama `wig_monitoring_session`. Semua halaman dan endpoint API tetap dilindungi oleh `src/proxy.ts`.
+
+Gunakan `DASHBOARD_SESSION_SECRET` yang panjang dan berbeda dari password login untuk menandatangani session cookie.
+
+## Best Practice Pengembangan Monitoring
+
+Tambahan yang direkomendasikan untuk monitoring end-to-end:
+
+- Server: swap usage, inode usage, disk read/write throughput, network throughput, systemd service health, reboot required, dan uptime.
+- Prometheus: target down, scrape duration, scrape samples, TSDB head series, rule evaluation duration, dan exporter self-health.
+- Network: ICMP availability, latency, jitter 5 menit, packet loss 5 menit, DNS probe, HTTP/HTTPS probe, dan SLA availability.
+- MikroTik: upload/download Mbps dari `ifHCInOctets`/`ifHCOutOctets`, port status, interface error/drop, top interface by traffic, router uptime, dan alias interface yang human-readable.
+- Alerting: threshold warning/critical, cooldown window, acknowledgement, delivery ke Telegram/email/webhook, dan incident timeline.
+
+Query MikroTik awal yang dipakai backend:
+
+```promql
+rate(ifHCInOctets{job=~"snmp_if_mib|snmp_switch_ports",instance="192.168.20.1"}[5m]) * 8 / 1000000
+rate(ifHCOutOctets{job=~"snmp_if_mib|snmp_switch_ports",instance="192.168.20.1"}[5m]) * 8 / 1000000
+stddev_over_time(probe_duration_seconds{job="blackbox_icmp"}[5m]) * 1000
+(1 - avg_over_time(probe_success{job="blackbox_icmp"}[5m])) * 100
+```
+
+## Threshold Operasional
+
+Threshold default sudah tersedia di backend dan bisa dioverride lewat `.env` tanpa mengubah kode:
+
+```bash
+THRESHOLD_SERVER_CPU_PERCENT_WARNING=70
+THRESHOLD_SERVER_CPU_PERCENT_CRITICAL=85
+THRESHOLD_SERVER_RAM_PERCENT_WARNING=75
+THRESHOLD_SERVER_RAM_PERCENT_CRITICAL=85
+THRESHOLD_SERVER_DISK_PERCENT_WARNING=80
+THRESHOLD_SERVER_DISK_PERCENT_CRITICAL=90
+THRESHOLD_SERVER_LOAD1_WARNING=2
+THRESHOLD_SERVER_LOAD1_CRITICAL=4
+THRESHOLD_NETWORK_PING_MS_WARNING=50
+THRESHOLD_NETWORK_PING_MS_CRITICAL=100
+THRESHOLD_NETWORK_JITTER_MS_WARNING=10
+THRESHOLD_NETWORK_JITTER_MS_CRITICAL=30
+THRESHOLD_NETWORK_PACKET_LOSS_PERCENT_WARNING=1
+THRESHOLD_NETWORK_PACKET_LOSS_PERCENT_CRITICAL=5
+THRESHOLD_MIKROTIK_INTERFACE_UTILIZATION_PERCENT_WARNING=80
+THRESHOLD_MIKROTIK_INTERFACE_UTILIZATION_PERCENT_CRITICAL=95
+```
+
+Halaman `/roadmap` membaca threshold aktif dan readiness metric dari backend. Jika metric wajib belum tersedia, panel readiness akan menandai kategori sebagai `Missing` atau `Partial`.
 ## Endpoint Metrics
 
 Semua endpoint dilindungi Basic Auth melalui `src/proxy.ts`, memakai rate limit ringan, dan tidak menerima PromQL bebas dari frontend.
@@ -201,3 +252,5 @@ Jika Next.js listen di `127.0.0.1:3000`, port `3000` juga tidak perlu dibuka pub
 ## Catatan Fase MikroTik
 
 Halaman `/mikrotik` saat ini hanya discovery table. Traffic interface, RX/TX Mbps, status port, error, dan drop dibuat setelah metric SNMP aktual dari `snmp_if_mib` dan `snmp_switch_ports` terverifikasi di Prometheus.
+
+

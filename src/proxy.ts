@@ -1,48 +1,36 @@
 ﻿import { NextResponse, type NextRequest } from 'next/server';
+import { SESSION_COOKIE, verifySessionValue } from '@/lib/auth';
 
-function unauthorized() {
-  return new NextResponse('Auth required', {
-    status: 401,
-    headers: {
-      'WWW-Authenticate': 'Basic realm="InfraDash"',
-      'Cache-Control': 'no-store',
+const PUBLIC_PATHS = ['/login', '/api/auth/login'];
+
+function isPublicPath(pathname: string) {
+  return PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+}
+
+function apiUnauthorized() {
+  return NextResponse.json(
+    { error: 'Authentication required' },
+    {
+      status: 401,
+      headers: { 'Cache-Control': 'no-store' },
     },
-  });
+  );
 }
 
-function decodeBasicAuth(header: string) {
-  const [scheme, value] = header.split(' ');
-  if (scheme !== 'Basic' || !value) return null;
+export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
 
-  try {
-    const decoded = atob(value);
-    const separatorIndex = decoded.indexOf(':');
-    if (separatorIndex === -1) return null;
+  if (isPublicPath(pathname)) return NextResponse.next();
 
-    return {
-      user: decoded.slice(0, separatorIndex),
-      password: decoded.slice(separatorIndex + 1),
-    };
-  } catch {
-    return null;
-  }
-}
+  const isValidSession = await verifySessionValue(request.cookies.get(SESSION_COOKIE)?.value);
+  if (isValidSession) return NextResponse.next();
 
-export function proxy(request: NextRequest) {
-  const expectedUser = process.env.DASHBOARD_BASIC_USER;
-  const expectedPass = process.env.DASHBOARD_BASIC_PASS;
+  if (pathname.startsWith('/api/')) return apiUnauthorized();
 
-  if (!expectedUser || !expectedPass) {
-    return unauthorized();
-  }
-
-  const credentials = decodeBasicAuth(request.headers.get('authorization') || '');
-
-  if (credentials?.user === expectedUser && credentials.password === expectedPass) {
-    return NextResponse.next();
-  }
-
-  return unauthorized();
+  const loginUrl = request.nextUrl.clone();
+  loginUrl.pathname = '/login';
+  loginUrl.searchParams.set('next', pathname);
+  return NextResponse.redirect(loginUrl);
 }
 
 export const config = {

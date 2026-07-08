@@ -72,7 +72,7 @@ export default function TargetsPage() {
     <div className="space-y-6 animate-fade-in animate-slide-up">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-primary">Prometheus Targets</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-primary">Monitoring Targets</h1>
           <p className="text-sm text-muted-foreground mt-1 font-medium">Status of all monitored endpoints from query up</p>
         </div>
         <div className="flex items-center gap-4">
@@ -93,7 +93,7 @@ export default function TargetsPage() {
         </div>
       </div>
 
-      <div className="bg-card border border-border/60 rounded-lg overflow-hidden shadow-sm">
+      <div className="panel-surface rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-muted/50 text-muted-foreground text-xs uppercase border-b border-border">
@@ -131,3 +131,4 @@ export default function TargetsPage() {
     </div>
   );
 }
+

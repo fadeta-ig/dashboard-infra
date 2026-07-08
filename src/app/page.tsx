@@ -1,12 +1,25 @@
 ﻿'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Activity, Cpu, HardDrive, MemoryStick, Network, Target, Database } from 'lucide-react';
+import { Activity, Compass, Cpu, Database, HardDrive, MemoryStick, Network, Target } from 'lucide-react';
 import { format } from 'date-fns';
 import { StatCard } from '@/components/dashboard/stat-card';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';
 import type { NetworkTarget, SummaryResponse } from '@/lib/types';
 import { getErrorMessage } from '@/lib/metrics';
+
+interface ReadinessCategorySummary {
+  key: string;
+  title: string;
+  status: 'ready' | 'partial' | 'missing';
+  requiredReady: number;
+  requiredTotal: number;
+}
+
+interface ReadinessSummary {
+  prometheusReachable: boolean;
+  categories: ReadinessCategorySummary[];
+}
 
 function formatPercent(value: number | null) {
   return value === null ? 'Unknown' : `${value.toFixed(1)}%`;
@@ -21,6 +34,12 @@ function metricStatus(value: number | null, warning: number, critical: number) {
   if (value > critical) return 'critical';
   if (value >= warning) return 'warning';
   return 'healthy';
+}
+
+function readinessStatus(status: 'ready' | 'partial' | 'missing') {
+  if (status === 'ready') return 'healthy';
+  if (status === 'partial') return 'warning';
+  return 'unknown';
 }
 
 function LatencyRow({ name, target }: { name: string; target: NetworkTarget }) {
@@ -38,15 +57,27 @@ function LatencyRow({ name, target }: { name: string; target: NetworkTarget }) {
 
 export default function SummaryDashboard() {
   const [data, setData] = useState<SummaryResponse | null>(null);
+  const [readiness, setReadiness] = useState<ReadinessSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
-      const response = await fetch('/api/metrics/summary', { cache: 'no-store' });
-      if (!response.ok) throw new Error('Failed to fetch dashboard summary');
-      const json = (await response.json()) as SummaryResponse;
-      setData(json);
+      const [summaryResponse, readinessResponse] = await Promise.all([
+        fetch('/api/metrics/summary', { cache: 'no-store' }),
+        fetch('/api/metrics/readiness', { cache: 'no-store' }),
+      ]);
+
+      if (!summaryResponse.ok) throw new Error('Failed to fetch dashboard summary');
+
+      setData((await summaryResponse.json()) as SummaryResponse);
+
+      if (readinessResponse.ok) {
+        setReadiness((await readinessResponse.json()) as ReadinessSummary);
+      } else {
+        setReadiness(null);
+      }
+
       setError(null);
     } catch (err: unknown) {
       setError(getErrorMessage(err));
@@ -103,7 +134,7 @@ export default function SummaryDashboard() {
     <div className="space-y-6 animate-fade-in animate-slide-up">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-primary">System Summary</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-primary">Monitoring Server Ubuntu WIG</h1>
           <p className="text-sm text-muted-foreground flex items-center gap-2 mt-1 font-medium">
             Overall Status: <StatusIndicator status={data.status} text={data.status} />
           </p>
@@ -128,8 +159,31 @@ export default function SummaryDashboard() {
         <StatCard title="Monitoring Targets" value={`${upTargets} / ${data.targets.length}`} icon={Target} status={downTargets.length > 0 ? 'critical' : data.targets.length === 0 ? 'unknown' : 'healthy'} />
       </div>
 
+      <section className="panel-surface rounded-lg overflow-hidden">
+        <div className="px-4 py-3 border-b border-border bg-muted/40 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Compass className="h-4 w-4 text-slate-950" />
+            <h2 className="font-semibold text-primary">Monitoring Readiness</h2>
+          </div>
+          <a href="/roadmap" className="text-xs font-semibold text-slate-600 hover:text-slate-950">Open roadmap</a>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 divide-y md:divide-x md:divide-y-0 divide-border">
+          {(readiness?.categories || []).slice(0, 4).map((category) => (
+            <div key={category.key} className="p-4">
+              <p className="text-sm font-semibold text-slate-800">{category.title}</p>
+              <div className="mt-3">
+                <StatusIndicator status={readinessStatus(category.status)} text={`${category.requiredReady}/${category.requiredTotal} required`} />
+              </div>
+            </div>
+          ))}
+          {!readiness && (
+            <div className="p-4 text-sm text-muted-foreground">Readiness belum tersedia.</div>
+          )}
+        </div>
+      </section>
+
       <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_0.8fr] gap-6">
-        <section className="bg-card border border-border/60 rounded-lg overflow-hidden shadow-sm">
+        <section className="panel-surface rounded-lg overflow-hidden">
           <div className="px-4 py-3 border-b border-border bg-muted/40">
             <h2 className="font-semibold text-primary">Latency Table</h2>
           </div>
@@ -152,7 +206,7 @@ export default function SummaryDashboard() {
           </div>
         </section>
 
-        <section className="bg-card border border-border/60 rounded-lg overflow-hidden shadow-sm">
+        <section className="panel-surface rounded-lg overflow-hidden">
           <div className="px-4 py-3 border-b border-border bg-muted/40">
             <h2 className="font-semibold text-primary">Targets Down</h2>
           </div>

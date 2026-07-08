@@ -19,26 +19,25 @@ export function StatCard({ title, value, description, icon: Icon, status = 'unkn
   };
 
   const statusBgColors = {
-    healthy: 'bg-healthy/10',
-    warning: 'bg-warning/10',
-    critical: 'bg-critical/10',
-    degraded: 'bg-warning/10',
-    unknown: 'bg-unknown/10',
+    healthy: 'bg-emerald-50 border-emerald-100',
+    warning: 'bg-amber-50 border-amber-100',
+    critical: 'bg-red-50 border-red-100',
+    degraded: 'bg-amber-50 border-amber-100',
+    unknown: 'bg-slate-50 border-slate-100',
   };
 
   return (
-    <div className="rounded-lg border border-border/60 bg-card p-6 shadow-sm transition-all duration-300">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
-        <div className={cn('p-2 rounded-md transition-colors', statusBgColors[status])}>
+    <div className="panel-surface rounded-lg p-5 transition-colors hover:border-slate-300">
+      <div className="flex items-start justify-between gap-4">
+        <h3 className="text-sm font-semibold text-slate-500">{title}</h3>
+        <div className={cn('p-2 rounded-md border transition-colors', statusBgColors[status])}>
           <Icon className={cn('h-4 w-4', statusColors[status])} />
         </div>
       </div>
-      <div className="mt-4 flex flex-col gap-1">
-        <span className="text-2xl font-semibold tracking-tight text-primary">{value}</span>
+      <div className="mt-5 flex flex-col gap-1">
+        <span className="text-3xl font-semibold tracking-tight text-slate-950">{value}</span>
         {description && <p className="text-xs text-muted-foreground font-medium">{description}</p>}
       </div>
     </div>
   );
 }
-
