@@ -1,4 +1,4 @@
-# Monitoring Server Ubuntu WIG
+﻿# Monitoring Server Ubuntu WIG
 
 Monitoring Server Ubuntu WIG adalah dashboard monitoring internal berbasis Next.js App Router. Dashboard ini mengambil metrics dari Prometheus melalui backend Next.js Route Handlers, sehingga browser tidak pernah mengakses Prometheus atau exporter secara langsung.
 
@@ -58,6 +58,9 @@ PROMETHEUS_URL=http://127.0.0.1:9090
 DASHBOARD_BASIC_USER=admin-it
 DASHBOARD_BASIC_PASS=gunakan-password-panjang-yang-unik
 DASHBOARD_SESSION_SECRET=gunakan-secret-session-yang-berbeda
+# Opsional: isi false jika dashboard production masih diakses lewat HTTP internal/IP:3000.
+# Untuk HTTPS publik, kosongkan atau isi true.
+DASHBOARD_COOKIE_SECURE=
 ```
 
 Jangan commit file `.env`. Jangan tampilkan password, token, SNMP community, atau secret lain di UI.
@@ -68,6 +71,16 @@ Jangan commit file `.env`. Jangan tampilkan password, token, SNMP community, ata
 Aplikasi memakai halaman `/login`, bukan popup Basic Auth browser. Username dan password tetap dibaca dari `DASHBOARD_BASIC_USER` dan `DASHBOARD_BASIC_PASS`, lalu server membuat cookie session `HttpOnly` bernama `wig_monitoring_session`. Semua halaman dan endpoint API tetap dilindungi oleh `src/proxy.ts`.
 
 Gunakan `DASHBOARD_SESSION_SECRET` yang panjang dan berbeda dari password login untuk menandatangani session cookie.
+
+
+## Troubleshooting Login
+
+Jika username/password benar tetapi setelah klik masuk tetap kembali ke halaman login, biasanya cookie session tidak tersimpan oleh browser.
+
+- Jika dashboard diakses lewat HTTPS Nginx, pastikan Nginx mengirim header `X-Forwarded-Proto $scheme` seperti contoh konfigurasi di bawah.
+- Jika dashboard production masih diakses langsung via `http://IP-SERVER:3000` atau HTTP internal, tambahkan `DASHBOARD_COOKIE_SECURE=false` di `.env`, lalu restart service dashboard.
+- Jika muncul pesan `Username atau password tidak sesuai`, pastikan proses Node membaca `.env` yang benar. Setelah mengubah `.env`, selalu restart `pm2` atau `systemd` service.
+- Jika memakai systemd `EnvironmentFile`, pastikan file `.env` berada di path yang sama dengan konfigurasi service dan tidak ada spasi tersembunyi setelah username/password.
 
 ## Best Practice Pengembangan Monitoring
 

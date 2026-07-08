@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "deploy": "git pull origin main && npm install && npm run build && pm2 restart dashboard-infra"
+    "deploy": "git pull && npm install && npm run build && pm2 restart dashboard-infra"
   },
   "dependencies": {
     "clsx": "^2.1.1",
