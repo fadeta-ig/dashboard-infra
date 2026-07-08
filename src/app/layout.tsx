@@ -1,15 +1,11 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import "./globals.css";
-import { Sidebar } from "@/components/layout/sidebar";
-import { Topbar } from "@/components/layout/topbar";
-
-// Using Inter as the clean, modern font
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+﻿import type { Metadata } from 'next';
+import './globals.css';
+import { Sidebar } from '@/components/layout/sidebar';
+import { Topbar } from '@/components/layout/topbar';
 
 export const metadata: Metadata = {
-  title: "InfraDash - Server Monitoring",
-  description: "Internal IT Infrastructure Dashboard",
+  title: 'InfraDash - Server Monitoring',
+  description: 'Internal IT Infrastructure Dashboard',
 };
 
 export default function RootLayout({
@@ -18,7 +14,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} h-full antialiased`}>
+    <html lang="en" className="h-full antialiased">
       <body className="min-h-full flex font-sans">
         <Sidebar />
         <div className="flex-1 flex flex-col md:pl-64 min-h-screen">

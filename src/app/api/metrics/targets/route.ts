@@ -1,25 +1,19 @@
-import { NextResponse } from 'next/server';
+﻿import { type NextRequest } from 'next/server';
 import { prometheusInstantQuery } from '@/lib/prometheus';
+import { buildTargets, nowIso, PROMQL } from '@/lib/metrics';
+import { enforceMetricsRateLimit, noStoreJson } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  try {
-    const targetsData = await prometheusInstantQuery('up');
+export async function GET(request: NextRequest) {
+  const limited = enforceMetricsRateLimit(request);
+  if (limited) return limited;
 
-    const targets = targetsData?.result?.map((r: any) => ({
-      job: r.metric.job,
-      instance: r.metric.instance,
-      up: parseFloat(r.value[1]) === 1,
-      value: parseFloat(r.value[1])
-    })) || [];
+  const timestamp = nowIso();
+  const targetsData = await prometheusInstantQuery(PROMQL.up);
 
-    return NextResponse.json({
-      targets,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('Targets API Error:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
-  }
+  return noStoreJson({
+    targets: buildTargets(targetsData, timestamp),
+    timestamp,
+  });
 }

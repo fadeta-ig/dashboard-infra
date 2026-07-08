@@ -1,70 +1,92 @@
+﻿import type { PrometheusData, PrometheusMetric } from '@/lib/types';
+
 const PROMETHEUS_URL = process.env.PROMETHEUS_URL || 'http://127.0.0.1:9090';
 const TIMEOUT_MS = 5000;
 
-/**
- * Helper to fetch data with a timeout.
- */
+interface PrometheusApiResponse<T> {
+  status: 'success' | 'error';
+  data?: T;
+  errorType?: string;
+  error?: string;
+}
+
 async function fetchWithTimeout(url: string, options: RequestInit = {}) {
   const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const response = await fetch(url, {
+    return await fetch(url, {
       ...options,
       signal: controller.signal,
-      cache: 'no-store', // Always fetch fresh data from Prometheus
+      cache: 'no-store',
     });
-    clearTimeout(id);
-    return response;
-  } catch (error) {
-    clearTimeout(id);
-    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
-/**
- * Execute an instant query against Prometheus.
- */
-export async function prometheusInstantQuery(query: string) {
-  try {
-    const url = new URL(`${PROMETHEUS_URL}/api/v1/query`);
-    url.searchParams.append('query', query);
+function isPrometheusData(value: unknown): value is PrometheusData {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as { resultType?: unknown; result?: unknown };
+  return (
+    (candidate.resultType === 'vector' || candidate.resultType === 'matrix') &&
+    Array.isArray(candidate.result)
+  );
+}
 
+function normalizePrometheusUrl() {
+  return PROMETHEUS_URL.replace(/\/$/, '');
+}
+
+async function fetchPrometheusData<T>(url: URL, validator: (value: unknown) => value is T): Promise<T | null> {
+  try {
     const response = await fetchWithTimeout(url.toString());
-    
+
     if (!response.ok) {
-      throw new Error(`Prometheus API error: ${response.statusText}`);
+      throw new Error(`Prometheus API returned HTTP ${response.status}`);
     }
 
-    const data = await response.json();
-    return data.data;
+    const payload = (await response.json()) as PrometheusApiResponse<T>;
+
+    if (payload.status !== 'success' || !validator(payload.data)) {
+      throw new Error(payload.errorType || 'Invalid Prometheus response');
+    }
+
+    return payload.data;
   } catch (error) {
-    console.error('Prometheus instant query failed:', error);
+    console.error('Prometheus request failed:', error);
     return null;
   }
 }
 
-/**
- * Execute a range query against Prometheus.
- */
-export async function prometheusRangeQuery(query: string, start: number, end: number, step: string) {
-  try {
-    const url = new URL(`${PROMETHEUS_URL}/api/v1/query_range`);
-    url.searchParams.append('query', query);
-    url.searchParams.append('start', start.toString());
-    url.searchParams.append('end', end.toString());
-    url.searchParams.append('step', step);
+export async function prometheusInstantQuery(query: string): Promise<PrometheusData | null> {
+  const url = new URL(`${normalizePrometheusUrl()}/api/v1/query`);
+  url.searchParams.set('query', query);
+  return fetchPrometheusData(url, isPrometheusData);
+}
 
-    const response = await fetchWithTimeout(url.toString());
-    
-    if (!response.ok) {
-      throw new Error(`Prometheus API error: ${response.statusText}`);
-    }
+export async function prometheusRangeQuery(
+  query: string,
+  start: number,
+  end: number,
+  step: string,
+): Promise<PrometheusData | null> {
+  const url = new URL(`${normalizePrometheusUrl()}/api/v1/query_range`);
+  url.searchParams.set('query', query);
+  url.searchParams.set('start', String(start));
+  url.searchParams.set('end', String(end));
+  url.searchParams.set('step', step);
+  return fetchPrometheusData(url, isPrometheusData);
+}
 
-    const data = await response.json();
-    return data.data;
-  } catch (error) {
-    console.error('Prometheus range query failed:', error);
-    return null;
+function isMetricSeries(value: unknown): value is PrometheusMetric[] {
+  return Array.isArray(value) && value.every((item) => item && typeof item === 'object');
+}
+
+export async function prometheusSeriesQuery(matchers: string[]): Promise<PrometheusMetric[] | null> {
+  const url = new URL(`${normalizePrometheusUrl()}/api/v1/series`);
+  for (const matcher of matchers) {
+    url.searchParams.append('match[]', matcher);
   }
+  return fetchPrometheusData(url, isMetricSeries);
 }

@@ -1,6 +1,6 @@
 ﻿import { type NextRequest } from 'next/server';
 import { prometheusRangeQuery } from '@/lib/prometheus';
-import { alignServerRange, parseRange, PROMQL } from '@/lib/metrics';
+import { alignNetworkRange, parseRange, PROMQL } from '@/lib/metrics';
 import { enforceMetricsRateLimit, noStoreJson } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
@@ -13,15 +13,10 @@ export async function GET(request: NextRequest) {
   const { hours, step, range } = parseRange(searchParams.get('range'));
   const end = Math.floor(Date.now() / 1000);
   const start = end - hours * 3600;
-
-  const [cpuData, ramData, loadData] = await Promise.all([
-    prometheusRangeQuery(PROMQL.cpuUsage, start, end, step),
-    prometheusRangeQuery(PROMQL.ramUsage, start, end, step),
-    prometheusRangeQuery(PROMQL.load1, start, end, step),
-  ]);
+  const latencyData = await prometheusRangeQuery(PROMQL.pingLatency, start, end, step);
 
   return noStoreJson({
     range,
-    points: alignServerRange(cpuData, ramData, loadData),
+    points: alignNetworkRange(latencyData),
   });
 }

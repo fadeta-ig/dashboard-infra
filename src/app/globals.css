@@ -1,4 +1,4 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 
 @theme inline {
   --color-background: var(--background);
@@ -70,7 +70,7 @@
     --input: #e2e8f0;
     --ring: #94a3b8; /* Slate 400 */
 
-    --radius: 0.75rem; /* Slightly softer corners for elegance */
+    --radius: 0.5rem;
   }
 }
 
@@ -79,6 +79,7 @@
     border-color: var(--border);
   }
   body {
+    font-family: Arial, Helvetica, sans-serif;
     background-color: var(--background);
     color: var(--foreground);
     /* Prevent heavy font smoothing */
@@ -114,3 +115,4 @@
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+

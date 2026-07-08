@@ -1,21 +1,30 @@
-import { NextResponse } from 'next/server';
-import { prometheusInstantQuery } from '@/lib/prometheus';
+﻿import { type NextRequest } from 'next/server';
+import { prometheusSeriesQuery } from '@/lib/prometheus';
+import { buildSnmpDiscovery, nowIso } from '@/lib/metrics';
+import { enforceMetricsRateLimit, noStoreJson } from '@/lib/rate-limit';
+import type { MikrotikDiscoveryResponse } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  try {
-    // For Phase 1 MVP, we just return a placeholder or try a basic SNMP discovery
-    const data = await prometheusInstantQuery('sysUpTime'); // Example SNMP metric
-    
-    return NextResponse.json({
-      message: "MikroTik SNMP metrics available for discovery",
-      data: data?.result || [],
-      phase: 2,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('MikroTik Discovery API Error:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
-  }
+export async function GET(request: NextRequest) {
+  const limited = enforceMetricsRateLimit(request);
+  if (limited) return limited;
+
+  const series = await prometheusSeriesQuery([
+    '{job="snmp_if_mib"}',
+    '{job="snmp_switch_ports"}',
+    '{job="snmp_exporter_self"}',
+  ]);
+  const metrics = buildSnmpDiscovery(series);
+
+  const response: MikrotikDiscoveryResponse = {
+    message: metrics.length > 0
+      ? 'SNMP metrics ditemukan dari Prometheus. Gunakan daftar ini untuk validasi fase 2.'
+      : 'Belum ada sample SNMP series yang ditemukan. Pastikan scrape SNMP exporter berhasil.',
+    metrics,
+    totalSeries: series?.length || 0,
+    timestamp: nowIso(),
+  };
+
+  return noStoreJson(response);
 }

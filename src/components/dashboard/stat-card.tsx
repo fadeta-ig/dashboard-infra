@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils';
+﻿import { cn } from '@/lib/utils';
 import { LucideIcon } from 'lucide-react';
 
 interface StatCardProps {
@@ -27,7 +27,7 @@ export function StatCard({ title, value, description, icon: Icon, status = 'unkn
   };
 
   return (
-    <div className="rounded-xl border border-border/60 bg-card p-6 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300">
+    <div className="rounded-lg border border-border/60 bg-card p-6 shadow-sm transition-all duration-300">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
         <div className={cn('p-2 rounded-md transition-colors', statusBgColors[status])}>
@@ -41,3 +41,4 @@ export function StatCard({ title, value, description, icon: Icon, status = 'unkn
     </div>
   );
 }
+
