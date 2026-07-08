@@ -1,4 +1,4 @@
-﻿# Monitoring Server Ubuntu WIG
+# Monitoring Server Ubuntu WIG
 
 Monitoring Server Ubuntu WIG adalah dashboard monitoring internal berbasis Next.js App Router. Dashboard ini mengambil metrics dari Prometheus melalui backend Next.js Route Handlers, sehingga browser tidak pernah mengakses Prometheus atau exporter secara langsung.
 
@@ -19,24 +19,32 @@ src/
       summary/route.ts
       server/route.ts
       server/range/route.ts
+      server/services/route.ts
       network/route.ts
       network/range/route.ts
       targets/route.ts
+      readiness/route.ts
       mikrotik/discovery/route.ts
+      mikrotik/overview/route.ts
     page.tsx
     server/page.tsx
     network/page.tsx
     targets/page.tsx
     mikrotik/page.tsx
+    roadmap/page.tsx
+    login/page.tsx
     layout.tsx
     globals.css
   components/
     dashboard/
     layout/
   lib/
+    auth.ts
     metrics.ts
+    monitoring-config.ts
     prometheus.ts
     rate-limit.ts
+    thresholds.ts
     types.ts
   proxy.ts
 ```
@@ -104,19 +112,23 @@ THRESHOLD_MIKROTIK_INTERFACE_UTILIZATION_PERCENT_CRITICAL=95
 ```
 
 Halaman `/roadmap` membaca threshold aktif dan readiness metric dari backend. Jika metric wajib belum tersedia, panel readiness akan menandai kategori sebagai `Missing` atau `Partial`.
+
 ## Endpoint Metrics
 
-Semua endpoint dilindungi Basic Auth melalui `src/proxy.ts`, memakai rate limit ringan, dan tidak menerima PromQL bebas dari frontend.
+Semua endpoint dilindungi session auth melalui `src/proxy.ts`, memakai rate limit ringan, dan tidak menerima PromQL bebas dari frontend.
 
 - `GET /api/metrics/summary`
 - `GET /api/metrics/server`
 - `GET /api/metrics/server/range?range=1h|6h|24h`
+- `GET /api/metrics/server/services`
 - `GET /api/metrics/network`
 - `GET /api/metrics/network/range?range=1h|6h|24h`
 - `GET /api/metrics/targets`
+- `GET /api/metrics/readiness`
 - `GET /api/metrics/mikrotik/discovery`
+- `GET /api/metrics/mikrotik/overview`
 
-PromQL disimpan di backend pada `src/lib/metrics.ts`.
+PromQL disimpan di backend pada `src/lib/metrics.ts` dan route handler terkait.
 
 ## Development
 
@@ -125,7 +137,7 @@ npm install
 npm run dev
 ```
 
-Buka `http://localhost:3000`. Browser akan meminta Basic Auth sesuai `.env`.
+Buka `http://localhost:3000`, lalu login melalui halaman `/login` memakai `DASHBOARD_BASIC_USER` dan `DASHBOARD_BASIC_PASS` dari `.env`.
 
 ## Production Build
 
@@ -249,8 +261,28 @@ sudo ufw allow 443/tcp
 
 Jika Next.js listen di `127.0.0.1:3000`, port `3000` juga tidak perlu dibuka publik.
 
+## Data Operasional yang Sudah Dikonfigurasi
+
+Mapping fase 1 sudah memakai data operasional berikut:
+
+- MikroTik gateway: `192.168.20.1`.
+- ISP 1 Indihome: `ether1-INDIHOME` sebagai monitor fisik dan `pppoe-out1` sebagai sumber total WAN, kapasitas 150 Mbps download / 50 Mbps upload.
+- ISP 2 Citranet: `ether2`, kapasitas 200 Mbps download / 200 Mbps upload.
+- LAN trunk: `ether3`.
+- VLAN aktif: `10-Jaringan`, `20-VoIP`, `30-CCTV`.
+- VPN: `<l2tp-user-plant2>`.
+- Service Ubuntu yang dicek: `nginx`, `apache`, `php-fpm`, `mysql`, `mariadb`, `node`, `pm2`, dan `ssh`.
+
+Catatan penting: discovery terakhir menunjukkan SNMP Exporter dan scrape SNMP sudah terlihat, tetapi metric IF-MIB aktual belum muncul. Metric yang masih wajib tersedia untuk traffic/status interface adalah `ifHCInOctets`, `ifHCOutOctets`, dan `ifOperStatus`.
+
+## Konfigurasi yang Masih Diperlukan
+
+- Aktifkan Node Exporter systemd collector agar `node_systemd_unit_state` tersedia untuk service health. Contoh flag: `--collector.systemd --collector.systemd.unit-include='(nginx|apache2?|php.*fpm|mysql|mariadb|node|pm2|ssh|sshd).*\.service'`.
+- Validasi modul SNMP Exporter `if_mib` dan `switch_ports` agar mengeluarkan IF-MIB counter/status, bukan hanya `snmp_scrape_*`.
+- Tentukan sumber traffic ISP 1 yang akan dipakai sebagai angka utama, apakah logical `pppoe-out1` atau physical `ether1-INDIHOME`, supaya tidak double-count.
+- Lengkapi target tambahan untuk DNS lokal, HTTP/HTTPS probe domain kantor, switch/AP utama, dan NVR/CCTV.
+- Setelah IF-MIB tersedia, fase berikutnya bisa menambahkan top interface traffic, error/drop, port status real-time, dan alert utilization.
+
 ## Catatan Fase MikroTik
 
-Halaman `/mikrotik` saat ini hanya discovery table. Traffic interface, RX/TX Mbps, status port, error, dan drop dibuat setelah metric SNMP aktual dari `snmp_if_mib` dan `snmp_switch_ports` terverifikasi di Prometheus.
-
-
+Halaman `/mikrotik` sekarang menampilkan mapping interface, kapasitas ISP, ping gateway, jitter, packet loss, dan discovery table. Upload/download WAN akan otomatis terisi setelah Prometheus memiliki metric `ifHCInOctets` dan `ifHCOutOctets`; status port akan terisi setelah `ifOperStatus` tersedia.

@@ -1,9 +1,10 @@
-﻿'use client';
+'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, BellRing, CheckCircle2, Database, Gauge, HardDrive, Network, RefreshCcw, RouterIcon, ShieldCheck } from 'lucide-react';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';
 import { getErrorMessage } from '@/lib/metrics';
+import { ADDITIONAL_TARGET_SUGGESTIONS, MIKROTIK_INTERFACES, UBUNTU_SERVICES } from '@/lib/monitoring-config';
 
 type ReadinessStatus = 'ready' | 'partial' | 'missing';
 
@@ -79,11 +80,13 @@ const configTasks = [
   'Aktifkan atau validasi IF-MIB di SNMP Exporter untuk ifHCInOctets, ifHCOutOctets, ifOperStatus.',
   'Aktifkan Node Exporter systemd collector jika service health ingin ditampilkan.',
   'Tambahkan Blackbox DNS/HTTP modules jika ingin probe DNS dan website.',
-  'Tetapkan mapping interface MikroTik: WAN, LAN, AP, Switch, bridge, atau PPPoE.',
-  'Tetapkan bandwidth ISP download/upload agar utilization warning/critical bisa akurat.',
+  'Lengkapi IP target tambahan: DNS lokal, website publik/internal, switch/AP utama, dan NVR/CCTV.',
+  'Tentukan interface WAN utama untuk ISP 1 agar traffic tidak double-count antara ether1 dan pppoe-out1.',
   'Tetapkan notification channel untuk fase alerting: dashboard only, Telegram, email, atau webhook.',
 ];
 
+const configuredWanInterfaces = MIKROTIK_INTERFACES.filter((item) => item.role === 'wan');
+const pendingTargets = ADDITIONAL_TARGET_SUGGESTIONS.filter((item) => item.suggestedTarget.includes('isi-') || item.suggestedTarget === 'https://example.com');
 function categoryStatusToIndicator(status: ReadinessStatus) {
   if (status === 'ready') return 'healthy';
   if (status === 'partial') return 'warning';
@@ -205,7 +208,7 @@ export default function RoadmapPage() {
                 <StatusIndicator status={categoryStatusToIndicator(category.status)} text={readinessCopy(category.status)} />
               </div>
               <div className="mt-4 text-xs font-medium text-muted-foreground">
-                Required {category.requiredReady}/{category.requiredTotal} · Available {category.availableTotal}/{category.total}
+                Required {category.requiredReady}/{category.requiredTotal} / Available {category.availableTotal}/{category.total}
               </div>
               <div className="mt-4 space-y-2">
                 {category.items.map((item) => (
@@ -229,6 +232,61 @@ export default function RoadmapPage() {
         </div>
       </section>
 
+      <section className="panel-surface rounded-lg overflow-hidden">
+        <div className="px-6 py-4 border-b border-border bg-white/60">
+          <h2 className="font-semibold">Data Operasional yang Sudah Masuk</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Mapping ini dipakai backend untuk fase MikroTik dan Ubuntu service health tanpa menampilkan secret.</p>
+        </div>
+        <div className="grid grid-cols-1 xl:grid-cols-3 divide-y xl:divide-x xl:divide-y-0 divide-border">
+          <div className="p-6">
+            <p className="text-sm font-semibold text-slate-950">WAN & ISP Capacity</p>
+            <div className="mt-4 space-y-2 text-sm text-muted-foreground">
+              {configuredWanInterfaces.map((item) => (
+                <div key={item.name} className="rounded-md bg-muted/45 px-3 py-2">
+                  <p className="font-semibold text-slate-800">{item.name} / {item.isp}</p>
+                  <p className="mt-0.5">Down {item.downloadCapacityMbps || 0} Mbps / Up {item.uploadCapacityMbps || 0} Mbps</p>
+                  <p className="mt-1 text-xs text-slate-500">{item.includeInWanTotal === false ? 'Physical monitor, not total source' : 'Included in WAN total'}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="p-6">
+            <p className="text-sm font-semibold text-slate-950">MikroTik Interface Mapping</p>
+            <p className="mt-2 text-sm text-muted-foreground">{MIKROTIK_INTERFACES.length} interface terdaftar: WAN, trunk, VLAN, VPN, loopback, dan port unused.</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {MIKROTIK_INTERFACES.filter((item) => item.expectedUp).map((item) => (
+                <span key={item.name} className="rounded-md bg-muted/60 px-2.5 py-1 text-xs font-semibold text-slate-700">{item.name}</span>
+              ))}
+            </div>
+          </div>
+          <div className="p-6">
+            <p className="text-sm font-semibold text-slate-950">Ubuntu Services</p>
+            <p className="mt-2 text-sm text-muted-foreground">{UBUNTU_SERVICES.length} service pattern dikonfigurasi untuk dicek lewat Node Exporter systemd collector.</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {UBUNTU_SERVICES.map((service) => (
+                <span key={service.key} className="rounded-md bg-muted/60 px-2.5 py-1 text-xs font-semibold text-slate-700">{service.label}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="border-t border-border bg-amber-50 px-6 py-4 text-sm text-amber-800">
+          Belum ada IF-MIB live counter pada discovery terakhir, jadi upload/download MikroTik akan tampil setelah ifHCInOctets, ifHCOutOctets, dan ifOperStatus tersedia di Prometheus.
+        </div>
+      </section>
+
+      <section className="panel-surface rounded-lg p-6">
+        <h2 className="font-semibold">Target Tambahan yang Menunggu Data</h2>
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 text-sm">
+          {pendingTargets.map((target) => (
+            <div key={target.key} className="rounded-md bg-muted/45 px-3 py-3">
+              <p className="font-semibold text-slate-800">{target.label}</p>
+              <p className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">{target.type}</p>
+              <p className="mt-2 text-muted-foreground">{target.purpose}</p>
+              <code className="mt-3 block text-xs text-slate-500">{target.suggestedTarget}</code>
+            </div>
+          ))}
+        </div>
+      </section>
       <div className="grid grid-cols-1 xl:grid-cols-[0.9fr_1.1fr] gap-6">
         <section className="panel-surface rounded-lg p-6">
           <h2 className="font-semibold">Threshold Aktif</h2>
