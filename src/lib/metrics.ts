@@ -23,8 +23,8 @@ export const PROMQL = {
   diskRootUsage: '100 * (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})',
   load1: 'node_load1',
   up: 'up',
-  pingSuccess: 'probe_success{job="blackbox_icmp"}',
-  pingLatency: 'probe_duration_seconds{job="blackbox_icmp"}',
+  pingSuccess: 'probe_success{job=~"blackbox_icmp|blackbox_icmp_mki_devices"}',
+  pingLatency: 'probe_duration_seconds{job=~"blackbox_icmp|blackbox_icmp_mki_devices"}',
 };
 
 export const NETWORK_TARGETS = {
@@ -107,7 +107,12 @@ export function buildServerMetrics(
 }
 
 function metricMatchesTarget(result: PrometheusVectorResult | PrometheusMatrixResult, targetIp: string) {
-  return result.metric.instance === targetIp || result.metric.target === targetIp;
+  return (
+    result.metric.instance === targetIp ||
+    result.metric.target === targetIp ||
+    result.metric.ip === targetIp ||
+    result.metric.__param_target === targetIp
+  );
 }
 
 export function buildNetworkTarget(

@@ -128,7 +128,7 @@ curl -s 'http://127.0.0.1:9100/metrics' | grep 'node_systemd_unit_state' | egrep
 
 ## Target ICMP Tambahan
 
-Dashboard Network menampilkan target tambahan berikut jika sudah masuk ke job `blackbox_icmp` Prometheus:
+Dashboard Network menampilkan target tambahan berikut jika sudah masuk ke job `blackbox_icmp_mki_devices` Prometheus. Dashboard juga tetap membaca job lama `blackbox_icmp` untuk gateway/Google/Cloudflare:
 
 - Public IP: `202.152.141.27`
 - CCTV MKI Area 1: `192.168.40.253`
@@ -139,7 +139,7 @@ Dashboard Network menampilkan target tambahan berikut jika sudah masuk ke job `b
 - PBX Dinstar: `192.168.30.253`
 - Base Station Grandstream: `192.168.30.254`
 
-Jika target belum ada di Prometheus, UI akan menampilkan status `Unknown`. Tambahkan target tersebut ke scrape config `blackbox_icmp`, reload Prometheus, lalu tunggu scrape berikutnya.
+Jika target belum ada di Prometheus, UI akan menampilkan status `Unknown`. Tambahkan target tersebut ke scrape config `blackbox_icmp_mki_devices`, reload Prometheus, lalu tunggu scrape berikutnya. Dashboard akan match berdasarkan label `ip`, `target`, `__param_target`, atau `instance`.
 
 ## Best Practice Pengembangan Monitoring
 
