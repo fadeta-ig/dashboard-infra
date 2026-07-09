@@ -166,9 +166,7 @@ export interface ServerRangePoint {
 
 export interface NetworkRangePoint {
   timestamp: number;
-  gateway: number | null;
-  googleDns: number | null;
-  cloudflareDns: number | null;
+  [targetId: string]: number | null | undefined;
 }
 
 // ─── SNMP / MikroTik ────────────────────────────────────────────────────────

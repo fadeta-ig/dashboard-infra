@@ -460,20 +460,48 @@ function findMatrixForTarget(data: PrometheusData | null, target: string) {
 }
 
 export function alignNetworkRange(latencyData: PrometheusData | null): NetworkRangePoint[] {
-  const gateway = findMatrixForTarget(latencyData, NETWORK_TARGETS.gateway)?.values || [];
-  const googleDns = findMatrixForTarget(latencyData, NETWORK_TARGETS.googleDns)?.values || [];
-  const cloudflareDns = findMatrixForTarget(latencyData, NETWORK_TARGETS.cloudflareDns)?.values || [];
-  const longest = [gateway, googleDns, cloudflareDns].reduce(
-    (current, next) => next.length > current.length ? next : current,
-    gateway,
-  );
+  if (!latencyData || latencyData.resultType !== 'matrix') return [];
 
-  return longest.map(([timestamp], index) => ({
-    timestamp: timestamp * 1000,
-    gateway: gateway[index]?.[1] ? roundMetric(Number.parseFloat(gateway[index][1]) * 1000, 2) : null,
-    googleDns: googleDns[index]?.[1] ? roundMetric(Number.parseFloat(googleDns[index][1]) * 1000, 2) : null,
-    cloudflareDns: cloudflareDns[index]?.[1] ? roundMetric(Number.parseFloat(cloudflareDns[index][1]) * 1000, 2) : null,
-  }));
+  const targetValues = new Map<string, [number, string][]>();
+  for (const result of latencyData.result) {
+    const targetKey = normalizeTargetLabel(result.metric.target ?? result.metric.instance);
+    if (!targetKey) continue;
+    targetValues.set(targetKey, result.values);
+  }
+
+  const timestampSet = new Set<number>();
+  for (const values of targetValues.values()) {
+    for (const [timestamp] of values) {
+      timestampSet.add(timestamp);
+    }
+  }
+
+  const sortedTimestamps = Array.from(timestampSet).sort((a, b) => a - b);
+  const targetPointers = new Map<string, number>();
+  for (const key of targetValues.keys()) {
+    targetPointers.set(key, 0);
+  }
+
+  return sortedTimestamps.map((timestamp) => {
+    const point: NetworkRangePoint = { timestamp: timestamp * 1000 };
+    for (const [targetKey, values] of targetValues.entries()) {
+      let pointer = targetPointers.get(targetKey) || 0;
+      
+      while (pointer < values.length && values[pointer][0] < timestamp) {
+        pointer++;
+      }
+      
+      if (pointer < values.length && values[pointer][0] === timestamp) {
+        const valStr = values[pointer][1];
+        point[targetKey] = roundMetric(Number.parseFloat(valStr) * 1000, 2);
+      } else {
+        point[targetKey] = null;
+      }
+      
+      targetPointers.set(targetKey, pointer);
+    }
+    return point;
+  });
 }
 
 export function buildSnmpDiscovery(series: PrometheusMetric[] | null): SnmpMetricDiscovery[] {

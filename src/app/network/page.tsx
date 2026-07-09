@@ -1,14 +1,21 @@
-﻿'use client';
+'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { Activity, Camera, Fingerprint, Globe, Phone, RouterIcon, Server, type LucideIcon } from 'lucide-react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
+import { Activity, Camera, Fingerprint, Globe, Phone, RouterIcon, Server, Check, type LucideIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';
 import type { NetworkMetrics, NetworkRangePoint, NetworkTarget } from '@/lib/types';
 import { getErrorMessage } from '@/lib/metrics';
+import { cn } from '@/lib/utils';
 
 type NetworkRangeResponse = { range: string; points: NetworkRangePoint[] };
+
+const CHART_COLORS = [
+  '#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', 
+  '#14b8a6', '#f97316', '#6366f1', '#eab308', '#06b6d4',
+  '#ef4444', '#84cc16', '#a855f7', '#f43f5e', '#0ea5e9'
+];
 
 function categoryIcon(category?: string): LucideIcon {
   if (category === 'cctv') return Camera;
@@ -32,23 +39,24 @@ function categoryLabel(category?: string) {
 function latencyText(target: NetworkTarget) {
   return target.latencyMs === null ? 'Unknown' : `${target.latencyMs.toFixed(1)} ms`;
 }
+
 function TargetCard({ title, target, icon: Icon }: { title: string; target: NetworkTarget; icon: LucideIcon }) {
   return (
-    <div className="panel-surface rounded-lg p-6 flex flex-col items-center text-center">
-      <div className="p-3 bg-muted/70 rounded-md mb-4">
-        <Icon className="h-6 w-6 text-primary" />
+    <div className="panel-surface rounded p-5 flex flex-col items-center text-center">
+      <div className="p-2.5 bg-slate-50 border border-slate-100 rounded mb-4">
+        <Icon className="h-5 w-5 text-slate-700" />
       </div>
-      <h2 className="font-medium text-lg">{title}</h2>
-      <p className="text-sm font-mono text-muted-foreground mt-1 mb-4">{target.target}</p>
+      <h2 className="font-semibold text-sm text-slate-900">{title}</h2>
+      <p className="text-xs font-mono text-slate-500 mt-1 mb-4">{target.target}</p>
 
-      <div className="grid grid-cols-2 gap-4 w-full">
-        <div className="flex flex-col items-center p-3 bg-muted/40 rounded-md">
-          <span className="text-xs text-muted-foreground mb-1 font-medium">Status</span>
+      <div className="grid grid-cols-2 gap-3 w-full">
+        <div className="flex flex-col items-center p-2.5 bg-slate-50 border border-slate-100 rounded">
+          <span className="text-[10px] text-slate-500 mb-1 font-semibold uppercase tracking-wider">Status</span>
           <StatusIndicator status={target.up === null ? 'unknown' : target.up ? 'healthy' : 'critical'} text={target.up === null ? 'Unknown' : target.up ? 'UP' : 'DOWN'} />
         </div>
-        <div className="flex flex-col items-center p-3 bg-muted/40 rounded-md">
-          <span className="text-xs text-muted-foreground mb-1 font-medium">Latency</span>
-          <span className="font-semibold text-primary">{target.latencyMs === null ? 'Unknown' : `${target.latencyMs.toFixed(1)} ms`}</span>
+        <div className="flex flex-col items-center p-2.5 bg-slate-50 border border-slate-100 rounded">
+          <span className="text-[10px] text-slate-500 mb-1 font-semibold uppercase tracking-wider">Latency</span>
+          <span className="font-mono text-sm font-semibold text-slate-800">{target.latencyMs === null ? 'Unknown' : `${target.latencyMs.toFixed(1)} ms`}</span>
         </div>
       </div>
     </div>
@@ -61,6 +69,7 @@ export default function NetworkPage() {
   const [range, setRange] = useState('1h');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hiddenTargets, setHiddenTargets] = useState<Set<string>>(new Set());
 
   const fetchData = useCallback(async () => {
     try {
@@ -85,50 +94,76 @@ export default function NetworkPage() {
   }, [range]);
 
   useEffect(() => {
-    const initial = window.setTimeout(() => {
-      void fetchData();
-    }, 0);
-    const interval = window.setInterval(() => {
-      void fetchData();
-    }, 15000);
-
+    const initial = window.setTimeout(() => void fetchData(), 0);
+    const interval = window.setInterval(() => void fetchData(), 15000);
     return () => {
       window.clearTimeout(initial);
       window.clearInterval(interval);
     };
   }, [fetchData]);
 
+  // Extract all available targets for the chart
+  const chartTargets = useMemo(() => {
+    if (!data) return [];
+    const all = [
+      { id: data.gateway.target, name: 'Gateway', color: CHART_COLORS[0] },
+      { id: data.googleDns.target, name: 'Google DNS', color: CHART_COLORS[1] },
+      { id: data.cloudflareDns.target, name: 'Cloudflare DNS', color: CHART_COLORS[2] },
+    ];
+    
+    data.additionalTargets.forEach((t, i) => {
+      all.push({
+        id: t.target,
+        name: t.label || t.target,
+        color: CHART_COLORS[(i + 3) % CHART_COLORS.length]
+      });
+    });
+    
+    return all;
+  }, [data]);
+
+  const toggleTarget = (id: string) => {
+    setHiddenTargets(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = (show: boolean) => {
+    if (show) setHiddenTargets(new Set());
+    else setHiddenTargets(new Set(chartTargets.map(t => t.id)));
+  };
+
   const formatXAxis = (tickItem: number) => format(new Date(tickItem), 'HH:mm');
+  
   const formatTooltip = (value: unknown, name: unknown): [string, string] => {
     if (typeof value !== 'number') return [String(value ?? 'Unknown'), String(name ?? '')];
-    const labels: Record<string, string> = {
-      gateway: 'Gateway',
-      googleDns: 'Google DNS',
-      cloudflareDns: 'Cloudflare DNS',
-    };
-    return [`${value.toFixed(2)} ms`, labels[String(name)] || String(name)];
+    const targetInfo = chartTargets.find(t => t.id === name);
+    return [`${value.toFixed(2)} ms`, targetInfo?.name || String(name)];
   };
 
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="h-8 w-64 bg-muted animate-pulse rounded-md" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[1, 2, 3].map((item) => <div key={item} className="h-40 bg-muted animate-pulse rounded-lg border border-border" />)}
+        <div className="h-8 w-64 bg-slate-200 animate-pulse rounded" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[1, 2, 3].map((item) => <div key={item} className="h-40 bg-slate-200 animate-pulse rounded border border-slate-200" />)}
         </div>
-        <div className="h-[340px] bg-muted animate-pulse rounded-lg border border-border" />
+        <div className="h-[400px] bg-slate-200 animate-pulse rounded border border-slate-200" />
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6">
-        <h2 className="text-lg font-bold text-destructive flex items-center gap-2">
+      <div className="rounded border border-red-200 bg-red-50 p-6">
+        <h2 className="text-lg font-semibold text-red-700 flex items-center gap-2">
           <Activity className="h-5 w-5" /> Connection Error
         </h2>
-        <p className="text-muted-foreground mt-2">{error || 'Network data is unavailable.'}</p>
-        <button onClick={() => void fetchData()} className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90">
+        <p className="text-sm text-red-600 mt-2">{error || 'Network data is unavailable.'}</p>
+        <button onClick={() => void fetchData()} className="mt-4 px-4 py-2 bg-red-700 text-white rounded text-sm font-medium hover:bg-red-800 transition-colors">
           Retry Connection
         </button>
       </div>
@@ -136,67 +171,139 @@ export default function NetworkPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in animate-slide-up">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-slate-200 pb-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-primary">Network Monitoring</h1>
-          <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2 font-medium">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Network Monitoring</h1>
+          <p className="text-sm text-slate-500 mt-1 flex items-center gap-2 font-medium">
             Overall Status: <StatusIndicator status={data.internetStatus} text={data.internetStatus} />
           </p>
         </div>
-        <div className="flex gap-2 bg-card p-1 rounded-md border border-border">
+        <div className="flex gap-1.5 p-1 bg-slate-100 rounded border border-slate-200">
           {['1h', '6h', '24h'].map((item) => (
             <button
               key={item}
               onClick={() => setRange(item)}
-              className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${
-                range === item ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-              }`}
+              className={cn(
+                "px-3 py-1 text-xs font-semibold rounded transition-colors uppercase tracking-wider",
+                range === item ? "bg-white text-slate-900 shadow-sm border border-slate-200" : "text-slate-500 hover:text-slate-700"
+              )}
             >
-              {item.toUpperCase()}
+              {item}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <TargetCard title="MikroTik Gateway" target={data.gateway} icon={RouterIcon} />
         <TargetCard title="Google DNS" target={data.googleDns} icon={Globe} />
         <TargetCard title="Cloudflare DNS" target={data.cloudflareDns} icon={Globe} />
       </div>
 
-      <section className="panel-surface rounded-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-border bg-white/60">
-          <h2 className="font-semibold">Additional Ping Targets</h2>
-          <p className="mt-1 text-xs text-muted-foreground">IP publik, CCTV, fingerprint, PBX, dan base station. Membaca job blackbox_icmp_mki_devices dan mencocokkan target dari label ip/target/instance.</p>
+      <section className="panel-surface rounded p-5">
+        <div className="flex flex-col xl:flex-row xl:items-start justify-between mb-6 gap-4">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-900">Latency History</h2>
+            <p className="text-xs text-slate-500 mt-1">Select targets to show or hide their latency trends.</p>
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-2">
+            <button 
+              onClick={() => toggleAll(true)}
+              className="text-[10px] uppercase tracking-wider font-bold text-slate-500 hover:text-slate-900 px-2 py-1 bg-slate-100 rounded border border-slate-200 transition-colors"
+            >
+              All
+            </button>
+            <button 
+              onClick={() => toggleAll(false)}
+              className="text-[10px] uppercase tracking-wider font-bold text-slate-500 hover:text-slate-900 px-2 py-1 bg-slate-100 rounded border border-slate-200 transition-colors mr-2"
+            >
+              None
+            </button>
+            {chartTargets.map(t => {
+              const isHidden = hiddenTargets.has(t.id);
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => toggleTarget(t.id)}
+                  className={cn(
+                    "flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium border transition-all duration-200",
+                    isHidden ? "bg-transparent text-slate-400 border-slate-200 hover:border-slate-300" : "bg-slate-50 border-slate-200 text-slate-800 shadow-sm"
+                  )}
+                >
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: isHidden ? '#cbd5e1' : t.color }} />
+                  {t.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="h-[400px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={points} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+              <XAxis dataKey="timestamp" tickFormatter={formatXAxis} stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+              <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+              <Tooltip 
+                labelFormatter={(label) => format(new Date(Number(label)), 'MMM dd, HH:mm')} 
+                formatter={formatTooltip} 
+                contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '4px', fontSize: '12px' }} 
+              />
+              
+              {chartTargets.map(t => {
+                if (hiddenTargets.has(t.id)) return null;
+                return (
+                  <Line 
+                    key={t.id}
+                    type="monotone" 
+                    dataKey={t.id} 
+                    name={t.id}
+                    stroke={t.color} 
+                    strokeWidth={2} 
+                    dot={false} 
+                    activeDot={{ r: 4 }} 
+                    connectNulls 
+                  />
+                );
+              })}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
+
+      <section className="panel-surface rounded overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/50">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-900">Additional Ping Targets</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="bg-muted/50 text-muted-foreground text-xs uppercase border-b border-border">
+            <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
               <tr>
-                <th className="px-6 py-4 font-medium">Target</th>
-                <th className="px-6 py-4 font-medium">Category</th>
-                <th className="px-6 py-4 font-medium">Status</th>
-                <th className="px-6 py-4 font-medium text-right">Latency</th>
+                <th className="px-5 py-3 font-semibold">Target</th>
+                <th className="px-5 py-3 font-semibold">Category</th>
+                <th className="px-5 py-3 font-semibold">Status</th>
+                <th className="px-5 py-3 font-semibold text-right">Latency</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody className="divide-y divide-slate-100">
               {data.additionalTargets.map((target) => {
                 const Icon = categoryIcon(target.category);
                 return (
-                  <tr key={target.target} className="hover:bg-muted/50 transition-colors">
-                    <td className="px-6 py-4">
+                  <tr key={target.target} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="rounded-md bg-muted/70 p-2 text-slate-900"><Icon className="h-4 w-4" /></div>
+                        <div className="rounded bg-slate-100 p-2 text-slate-700"><Icon className="h-4 w-4" /></div>
                         <div>
                           <p className="font-semibold text-slate-900">{target.label || target.target}</p>
-                          <p className="mt-1 font-mono text-xs text-muted-foreground">{target.target}</p>
+                          <p className="font-mono text-xs text-slate-500">{target.target}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-muted-foreground">{categoryLabel(target.category)}</td>
-                    <td className="px-6 py-4"><StatusIndicator status={target.up === null ? 'unknown' : target.up ? 'healthy' : 'critical'} text={target.up === null ? 'Unknown' : target.up ? 'UP' : 'DOWN'} /></td>
-                    <td className="px-6 py-4 text-right font-mono">{latencyText(target)}</td>
+                    <td className="px-5 py-4 text-slate-600">{categoryLabel(target.category)}</td>
+                    <td className="px-5 py-4"><StatusIndicator status={target.up === null ? 'unknown' : target.up ? 'healthy' : 'critical'} text={target.up === null ? 'Unknown' : target.up ? 'UP' : 'DOWN'} /></td>
+                    <td className="px-5 py-4 text-right font-mono font-medium text-slate-900">{latencyText(target)}</td>
                   </tr>
                 );
               })}
@@ -204,24 +311,6 @@ export default function NetworkPage() {
           </table>
         </div>
       </section>
-      <section className="panel-surface rounded-lg p-6">
-        <h2 className="text-lg font-semibold mb-4">Latency History (ms)</h2>
-        <div className="h-[340px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={points} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="timestamp" tickFormatter={formatXAxis} stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-              <YAxis stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-              <Tooltip labelFormatter={(label) => format(new Date(Number(label)), 'MMM dd, HH:mm')} formatter={formatTooltip} contentStyle={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: '8px' }} />
-              <Line type="monotone" dataKey="gateway" stroke="#10b981" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls />
-              <Line type="monotone" dataKey="googleDns" stroke="#3b82f6" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls />
-              <Line type="monotone" dataKey="cloudflareDns" stroke="#f59e0b" strokeWidth={2} dot={false} activeDot={{ r: 5 }} connectNulls />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </section>
     </div>
   );
 }
-
-
