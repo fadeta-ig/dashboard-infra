@@ -52,12 +52,16 @@ export interface NetworkTarget {
   target: string;
   up: boolean | null;
   latencyMs: number | null;
+  label?: string;
+  category?: string;
+  purpose?: string;
 }
 
 export interface NetworkMetrics {
   gateway: NetworkTarget;
   googleDns: NetworkTarget;
   cloudflareDns: NetworkTarget;
+  additionalTargets: NetworkTarget[];
   internetStatus: InternetStatus;
   timestamp: string;
 }

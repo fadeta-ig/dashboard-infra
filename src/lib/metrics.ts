@@ -14,6 +14,7 @@
   TargetHealth,
 } from '@/lib/types';
 import { getMonitoringThresholds } from '@/lib/thresholds';
+import { NETWORK_PING_TARGETS } from '@/lib/monitoring-config';
 
 export const PROMQL = {
   cpuUsage: '100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)',
@@ -113,6 +114,7 @@ export function buildNetworkTarget(
   target: string,
   pingStatusData: PrometheusData | null,
   pingLatencyData: PrometheusData | null,
+  metadata: Partial<NetworkTarget> = {},
 ): NetworkTarget {
   const statusResult = pingStatusData?.resultType === 'vector'
     ? pingStatusData.result.find((result) => metricMatchesTarget(result, target))
@@ -128,6 +130,7 @@ export function buildNetworkTarget(
     target,
     up: successValue === null ? null : successValue === 1,
     latencyMs: latencyValue === null ? null : roundMetric(latencyValue * 1000, 2),
+    ...metadata,
   };
 }
 
@@ -146,16 +149,21 @@ export function buildNetworkMetrics(
   const gateway = buildNetworkTarget(NETWORK_TARGETS.gateway, pingStatusData, pingLatencyData);
   const googleDns = buildNetworkTarget(NETWORK_TARGETS.googleDns, pingStatusData, pingLatencyData);
   const cloudflareDns = buildNetworkTarget(NETWORK_TARGETS.cloudflareDns, pingStatusData, pingLatencyData);
+  const additionalTargets = NETWORK_PING_TARGETS.map((target) => buildNetworkTarget(target.target, pingStatusData, pingLatencyData, {
+    label: target.label,
+    category: target.category,
+    purpose: target.purpose,
+  }));
 
   return {
     gateway,
     googleDns,
     cloudflareDns,
+    additionalTargets,
     internetStatus: getInternetStatus(gateway, googleDns, cloudflareDns),
     timestamp,
   };
 }
-
 export function buildTargets(targetsData: PrometheusData | null, lastChecked = nowIso()): TargetHealth[] {
   if (!targetsData || targetsData.resultType !== 'vector') return [];
 

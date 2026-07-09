@@ -40,10 +40,9 @@ export async function GET(request: NextRequest) {
   const limited = enforceMetricsRateLimit(request);
   if (limited) return limited;
 
-  const serviceRegex = UBUNTU_SERVICES.map((service) => `(${service.matcher})`).join('|');
   const [collectorProbeData, serviceData] = await Promise.all([
     prometheusInstantQuery('node_systemd_unit_state'),
-    prometheusInstantQuery(`node_systemd_unit_state{state=~"${SYSTEMD_STATES}",name=~"${serviceRegex}"}`),
+    prometheusInstantQuery(`node_systemd_unit_state{state=~"${SYSTEMD_STATES}"}`),
   ]);
 
   const collectorAvailable = Boolean(

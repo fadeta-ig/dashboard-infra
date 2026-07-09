@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Activity, Globe, RouterIcon, type LucideIcon } from 'lucide-react';
+import { Activity, Camera, Fingerprint, Globe, Phone, RouterIcon, Server, type LucideIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';
@@ -10,6 +10,28 @@ import { getErrorMessage } from '@/lib/metrics';
 
 type NetworkRangeResponse = { range: string; points: NetworkRangePoint[] };
 
+function categoryIcon(category?: string): LucideIcon {
+  if (category === 'cctv') return Camera;
+  if (category === 'fingerprint') return Fingerprint;
+  if (category === 'voice') return Phone;
+  if (category === 'internet') return Globe;
+  return Server;
+}
+
+function categoryLabel(category?: string) {
+  const labels: Record<string, string> = {
+    cctv: 'CCTV',
+    fingerprint: 'Fingerprint',
+    voice: 'Voice',
+    internet: 'Internet',
+    network: 'Network',
+  };
+  return category ? labels[category] || category : 'Network';
+}
+
+function latencyText(target: NetworkTarget) {
+  return target.latencyMs === null ? 'Unknown' : `${target.latencyMs.toFixed(1)} ms`;
+}
 function TargetCard({ title, target, icon: Icon }: { title: string; target: NetworkTarget; icon: LucideIcon }) {
   return (
     <div className="panel-surface rounded-lg p-6 flex flex-col items-center text-center">
@@ -143,6 +165,45 @@ export default function NetworkPage() {
         <TargetCard title="Cloudflare DNS" target={data.cloudflareDns} icon={Globe} />
       </div>
 
+      <section className="panel-surface rounded-lg overflow-hidden">
+        <div className="px-6 py-4 border-b border-border bg-white/60">
+          <h2 className="font-semibold">Additional Ping Targets</h2>
+          <p className="mt-1 text-xs text-muted-foreground">IP publik, CCTV, fingerprint, PBX, dan base station. Pastikan target ini sudah masuk job blackbox_icmp di Prometheus.</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-muted/50 text-muted-foreground text-xs uppercase border-b border-border">
+              <tr>
+                <th className="px-6 py-4 font-medium">Target</th>
+                <th className="px-6 py-4 font-medium">Category</th>
+                <th className="px-6 py-4 font-medium">Status</th>
+                <th className="px-6 py-4 font-medium text-right">Latency</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {data.additionalTargets.map((target) => {
+                const Icon = categoryIcon(target.category);
+                return (
+                  <tr key={target.target} className="hover:bg-muted/50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-md bg-muted/70 p-2 text-slate-900"><Icon className="h-4 w-4" /></div>
+                        <div>
+                          <p className="font-semibold text-slate-900">{target.label || target.target}</p>
+                          <p className="mt-1 font-mono text-xs text-muted-foreground">{target.target}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-muted-foreground">{categoryLabel(target.category)}</td>
+                    <td className="px-6 py-4"><StatusIndicator status={target.up === null ? 'unknown' : target.up ? 'healthy' : 'critical'} text={target.up === null ? 'Unknown' : target.up ? 'UP' : 'DOWN'} /></td>
+                    <td className="px-6 py-4 text-right font-mono">{latencyText(target)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
       <section className="panel-surface rounded-lg p-6">
         <h2 className="text-lg font-semibold mb-4">Latency History (ms)</h2>
         <div className="h-[340px] w-full">

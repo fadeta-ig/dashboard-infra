@@ -125,6 +125,22 @@ systemctl list-units --type=service --all | egrep 'nginx|apache|php|mysql|mariad
 curl -s 'http://127.0.0.1:9100/metrics' | grep 'node_systemd_unit_state' | egrep 'nginx|apache|php|mysql|mariadb|node|pm2|ssh|dashboard' | head -50
 ```
 
+
+## Target ICMP Tambahan
+
+Dashboard Network menampilkan target tambahan berikut jika sudah masuk ke job `blackbox_icmp` Prometheus:
+
+- Public IP: `202.152.141.27`
+- CCTV MKI Area 1: `192.168.40.253`
+- CCTV MKI Area 2: `192.168.40.254`
+- CCTV WIG Plant II: `10.10.77.2`
+- Fingerprint WIG Plant II: `10.10.77.3`
+- Fingerprint MKI: `192.168.20.22`
+- PBX Dinstar: `192.168.30.253`
+- Base Station Grandstream: `192.168.30.254`
+
+Jika target belum ada di Prometheus, UI akan menampilkan status `Unknown`. Tambahkan target tersebut ke scrape config `blackbox_icmp`, reload Prometheus, lalu tunggu scrape berikutnya.
+
 ## Best Practice Pengembangan Monitoring
 
 Tambahan yang direkomendasikan untuk monitoring end-to-end:

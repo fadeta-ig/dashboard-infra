@@ -20,6 +20,14 @@ export interface UbuntuServiceConfig {
   required: boolean;
 }
 
+export interface NetworkPingTargetConfig {
+  key: string;
+  label: string;
+  target: string;
+  category: 'internet' | 'cctv' | 'fingerprint' | 'voice' | 'network';
+  purpose: string;
+}
+
 export interface AdditionalTargetConfig {
   key: string;
   label: string;
@@ -33,36 +41,36 @@ export const MIKROTIK_GATEWAY = '192.168.20.1';
 export const MIKROTIK_INTERFACES: MikrotikInterfaceConfig[] = [
   {
     name: 'ether1-INDIHOME',
-    displayName: 'ISP 1 - Indihome Physical',
+    displayName: 'ISP 1 - Indihome Uplink',
     role: 'wan',
     comment: 'Uplink Indihome',
     isp: 'ISP 1',
     downloadCapacityMbps: 150,
     uploadCapacityMbps: 50,
     expectedUp: true,
-    includeInWanTotal: false,
-  },
-  {
-    name: 'pppoe-out1',
-    displayName: 'ISP 1 - PPPoE Indihome',
-    role: 'wan',
-    comment: 'WAN logical PPPoE',
-    isp: 'ISP 1',
-    downloadCapacityMbps: 150,
-    uploadCapacityMbps: 50,
-    expectedUp: true,
     includeInWanTotal: true,
   },
   {
-    name: 'ether2',
-    displayName: 'ISP 2 - Citranet',
+    name: 'pppoe-out1',
+    displayName: 'ISP 2 - PPPoE Citranet',
     role: 'wan',
-    comment: 'LINK CITRANET',
+    comment: 'WAN logical PPPoE via ether2',
     isp: 'ISP 2',
     downloadCapacityMbps: 200,
     uploadCapacityMbps: 200,
     expectedUp: true,
     includeInWanTotal: true,
+  },
+  {
+    name: 'ether2',
+    displayName: 'ISP 2 - Citranet Physical',
+    role: 'wan',
+    comment: 'Physical link for PPPoE Citranet',
+    isp: 'ISP 2',
+    downloadCapacityMbps: 200,
+    uploadCapacityMbps: 200,
+    expectedUp: true,
+    includeInWanTotal: false,
   },
   {
     name: 'ether3',
@@ -129,6 +137,64 @@ export const UBUNTU_SERVICES: UbuntuServiceConfig[] = [
   { key: 'ssh', label: 'SSH', matcher: 'ssh\\.service|sshd\\.service', required: true },
 ];
 
+export const NETWORK_PING_TARGETS: NetworkPingTargetConfig[] = [
+  {
+    key: 'public_ip_202_152_141_27',
+    label: 'Public IP 202.152.141.27',
+    target: '202.152.141.27',
+    category: 'internet',
+    purpose: 'Latency ke IP publik tambahan.',
+  },
+  {
+    key: 'cctv_mki_area_1',
+    label: 'CCTV MKI Area 1',
+    target: '192.168.40.253',
+    category: 'cctv',
+    purpose: 'Monitoring konektivitas CCTV MKI Area 1.',
+  },
+  {
+    key: 'cctv_mki_area_2',
+    label: 'CCTV MKI Area 2',
+    target: '192.168.40.254',
+    category: 'cctv',
+    purpose: 'Monitoring konektivitas CCTV MKI Area 2.',
+  },
+  {
+    key: 'cctv_wig_plant_ii',
+    label: 'CCTV WIG Plant II',
+    target: '10.10.77.2',
+    category: 'cctv',
+    purpose: 'Monitoring konektivitas CCTV WIG Plant II.',
+  },
+  {
+    key: 'fingerprint_wig_plant_ii',
+    label: 'Fingerprint WIG Plant II',
+    target: '10.10.77.3',
+    category: 'fingerprint',
+    purpose: 'Monitoring mesin fingerprint WIG Plant II.',
+  },
+  {
+    key: 'fingerprint_mki',
+    label: 'Fingerprint MKI',
+    target: '192.168.20.22',
+    category: 'fingerprint',
+    purpose: 'Monitoring mesin fingerprint MKI.',
+  },
+  {
+    key: 'pbx_dinstar',
+    label: 'PBX Dinstar',
+    target: '192.168.30.253',
+    category: 'voice',
+    purpose: 'Monitoring PBX Dinstar.',
+  },
+  {
+    key: 'base_station_grandstream',
+    label: 'Base Station Grandstream',
+    target: '192.168.30.254',
+    category: 'voice',
+    purpose: 'Monitoring base station Grandstream.',
+  },
+];
 export const ADDITIONAL_TARGET_SUGGESTIONS: AdditionalTargetConfig[] = [
   {
     key: 'gateway_icmp',
