@@ -254,11 +254,12 @@ export default function NetworkPage() {
               
               {chartTargets.map(t => {
                 if (hiddenTargets.has(t.id)) return null;
+                const safeKey = t.id.replace(/\./g, '_');
                 return (
                   <Line 
                     key={t.id}
                     type="monotone" 
-                    dataKey={t.id} 
+                    dataKey={safeKey} 
                     name={t.id}
                     stroke={t.color} 
                     strokeWidth={2} 

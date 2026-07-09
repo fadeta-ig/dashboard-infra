@@ -495,7 +495,7 @@ export function alignNetworkRange(latencyData: PrometheusData | null): NetworkRa
   }
 
   return sortedTimestamps.map((timestamp) => {
-    const point: NetworkRangePoint = { timestamp: timestamp * 1000 };
+    const point: Record<string, any> = { timestamp: timestamp * 1000 };
     for (const [targetKey, values] of targetValues.entries()) {
       let pointer = targetPointers.get(targetKey) || 0;
       
@@ -503,16 +503,17 @@ export function alignNetworkRange(latencyData: PrometheusData | null): NetworkRa
         pointer++;
       }
       
+      const safeKey = targetKey.replace(/\./g, '_');
       if (pointer < values.length && values[pointer][0] === timestamp) {
         const valStr = values[pointer][1];
-        point[targetKey] = roundMetric(Number.parseFloat(valStr) * 1000, 2);
+        point[safeKey] = roundMetric(Number.parseFloat(valStr) * 1000, 2);
       } else {
-        point[targetKey] = null;
+        point[safeKey] = null;
       }
       
       targetPointers.set(targetKey, pointer);
     }
-    return point;
+    return point as NetworkRangePoint;
   });
 }
 
