@@ -168,7 +168,7 @@ export default function NetworkPage() {
       <section className="panel-surface rounded-lg overflow-hidden">
         <div className="px-6 py-4 border-b border-border bg-white/60">
           <h2 className="font-semibold">Additional Ping Targets</h2>
-          <p className="mt-1 text-xs text-muted-foreground">IP publik, CCTV, fingerprint, PBX, dan base station. Pastikan target ini sudah masuk job blackbox_icmp di Prometheus.</p>
+          <p className="mt-1 text-xs text-muted-foreground">IP publik, CCTV, fingerprint, PBX, dan base station. Membaca job blackbox_icmp_mki_devices dan mencocokkan target dari label ip/target/instance.</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
