@@ -1,4 +1,4 @@
-﻿export type Status = 'healthy' | 'warning' | 'critical' | 'unknown';
+export type Status = 'healthy' | 'warning' | 'critical' | 'unknown';
 export type InternetStatus = 'healthy' | 'degraded' | 'critical' | 'unknown';
 
 export interface PrometheusMetric {
@@ -39,14 +39,86 @@ export interface TargetHealth {
   lastChecked: string;
 }
 
+/** Core server snapshot — extended with all observability metrics */
 export interface ServerMetrics {
+  // ─── Core (existing) ───────────────────────────────────────────
   cpuUsage: number | null;
   ramUsage: number | null;
   ramAvailableGb: number | null;
   diskUsage: number | null;
   load1: number | null;
   status: Status;
+
+  // ─── Uptime ────────────────────────────────────────────────────
+  uptimeSeconds: number | null;
+
+  // ─── Load Extended ─────────────────────────────────────────────
+  load5: number | null;
+  load15: number | null;
+
+  // ─── CPU Detail ────────────────────────────────────────────────
+  cpuCoreCount: number | null;
+
+  // ─── Swap ──────────────────────────────────────────────────────
+  swapUsagePercent: number | null;
+  swapUsedGb: number | null;
+  swapTotalGb: number | null;
+
+  // ─── Disk I/O Throughput ───────────────────────────────────────
+  diskReadBytesPerSec: number | null;
+  diskWriteBytesPerSec: number | null;
+
+  // ─── Network Server ────────────────────────────────────────────
+  netRxBytesPerSec: number | null;
+  netTxBytesPerSec: number | null;
+
+  // ─── Reboot Required ───────────────────────────────────────────
+  rebootRequired: boolean | null;
 }
+
+// ─── Filesystem per Mountpoint ──────────────────────────────────────────────
+
+export interface FilesystemMount {
+  mountpoint: string;
+  device: string;
+  fstype: string;
+  usagePercent: number | null;
+  usedGb: number | null;
+  totalGb: number | null;
+  availGb: number | null;
+  /** null for vfat/fat32 which don't support inodes */
+  inodeUsagePercent: number | null;
+  inodesTotal: number | null;
+  inodesFree: number | null;
+}
+
+// ─── CPU Per-Core ───────────────────────────────────────────────────────────
+
+export interface CpuCoreUsage {
+  cpu: string;
+  usagePercent: number | null;
+}
+
+// ─── Top Processes (process_exporter) ───────────────────────────────────────
+
+export interface TopProcess {
+  name: string;
+  cpuPercent: number | null;
+  memoryBytes: number | null;
+  numProcs: number | null;
+}
+
+// ─── Detail Response (heavy, polled every 60s) ──────────────────────────────
+
+export interface ServerDetailResponse {
+  filesystems: FilesystemMount[];
+  cpuCores: CpuCoreUsage[];
+  topProcesses: TopProcess[];
+  processExporterAvailable: boolean;
+  timestamp: string;
+}
+
+// ─── Network ────────────────────────────────────────────────────────────────
 
 export interface NetworkTarget {
   target: string;
@@ -66,6 +138,8 @@ export interface NetworkMetrics {
   timestamp: string;
 }
 
+// ─── Summary ────────────────────────────────────────────────────────────────
+
 export interface SummaryResponse {
   status: Status;
   server: ServerMetrics;
@@ -75,11 +149,19 @@ export interface SummaryResponse {
   queryHealth: Status;
 }
 
+// ─── Range Points ───────────────────────────────────────────────────────────
+
 export interface ServerRangePoint {
   timestamp: number;
   cpu: number | null;
   ram: number | null;
   load: number | null;
+  // Extended
+  swap: number | null;
+  diskReadMBps: number | null;
+  diskWriteMBps: number | null;
+  netRxMBps: number | null;
+  netTxMBps: number | null;
 }
 
 export interface NetworkRangePoint {
@@ -88,6 +170,8 @@ export interface NetworkRangePoint {
   googleDns: number | null;
   cloudflareDns: number | null;
 }
+
+// ─── SNMP / MikroTik ────────────────────────────────────────────────────────
 
 export interface SnmpMetricDiscovery {
   name: string;

@@ -1,4 +1,4 @@
-﻿import { type NextRequest } from 'next/server';
+import { type NextRequest } from 'next/server';
 import { prometheusInstantQuery } from '@/lib/prometheus';
 import {
   buildNetworkMetrics,
@@ -30,7 +30,10 @@ export async function GET(request: NextRequest) {
     prometheusInstantQuery(PROMQL.pingLatency),
   ]);
 
-  const server = buildServerMetrics(cpuData, ramUsageData, ramAvailData, diskData, loadData);
+  const server = buildServerMetrics(
+    cpuData, ramUsageData, ramAvailData, diskData, loadData,
+    null, null, null, null, null, null, null, null, null, null, null, null,
+  );
   const network = buildNetworkMetrics(pingStatusData, pingLatencyData, timestamp);
   const targets = buildTargets(targetsData, timestamp);
   const queryHealth = combineQueryHealth(
