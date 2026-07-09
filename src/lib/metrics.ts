@@ -464,9 +464,21 @@ export function alignNetworkRange(latencyData: PrometheusData | null): NetworkRa
 
   const targetValues = new Map<string, [number, string][]>();
   for (const result of latencyData.result) {
-    const targetKey = normalizeTargetLabel(result.metric.target ?? result.metric.instance);
-    if (!targetKey) continue;
-    targetValues.set(targetKey, result.values);
+    let matchedTarget: string | undefined;
+
+    if (metricMatchesTarget(result, NETWORK_TARGETS.gateway)) {
+      matchedTarget = NETWORK_TARGETS.gateway;
+    } else if (metricMatchesTarget(result, NETWORK_TARGETS.googleDns)) {
+      matchedTarget = NETWORK_TARGETS.googleDns;
+    } else if (metricMatchesTarget(result, NETWORK_TARGETS.cloudflareDns)) {
+      matchedTarget = NETWORK_TARGETS.cloudflareDns;
+    } else {
+      const found = NETWORK_PING_TARGETS.find(t => metricMatchesTarget(result, t.target, t.label ? [t.label] : []));
+      if (found) matchedTarget = found.target;
+    }
+
+    if (!matchedTarget) continue;
+    targetValues.set(matchedTarget, result.values);
   }
 
   const timestampSet = new Set<number>();
