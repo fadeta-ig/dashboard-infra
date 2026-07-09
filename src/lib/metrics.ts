@@ -60,7 +60,7 @@ export const PROMQL = {
    * Guard: node_memory_SwapTotal_bytes == 0 means no swap configured.
    * The `or` clause prevents NaN/Inf when dividing by zero.
    */
-  swapUsagePercent: '100 * (1 - (node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes)) * (node_memory_SwapTotal_bytes > 0)',
+  swapUsagePercent: '100 * (1 - (node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes)) and node_memory_SwapTotal_bytes > 0',
   swapUsedGb: '(node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes) / 1073741824',
   swapTotalGb: 'node_memory_SwapTotal_bytes / 1073741824',
 
