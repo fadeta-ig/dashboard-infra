@@ -82,6 +82,49 @@ Jika username/password benar tetapi setelah klik masuk tetap kembali ke halaman 
 - Jika muncul pesan `Username atau password tidak sesuai`, pastikan proses Node membaca `.env` yang benar. Setelah mengubah `.env`, selalu restart `pm2` atau `systemd` service.
 - Jika memakai systemd `EnvironmentFile`, pastikan file `.env` berada di path yang sama dengan konfigurasi service dan tidak ada spasi tersembunyi setelah username/password.
 
+
+## Ubuntu Service Health Setup
+
+Panel Ubuntu Service Health membutuhkan metric `node_systemd_unit_state` dari Node Exporter. Jika panel menampilkan `Collector missing`, aktifkan collector systemd pada service Node Exporter.
+
+Cek kondisi saat ini di server:
+
+```bash
+curl -s 'http://127.0.0.1:9090/api/v1/query?query=node_systemd_unit_state' | head
+curl -s 'http://127.0.0.1:9100/metrics' | grep node_systemd_unit_state | head
+systemctl cat node_exporter
+systemctl status node_exporter --no-pager
+```
+
+Contoh override systemd Node Exporter:
+
+```bash
+sudo systemctl edit node_exporter
+```
+
+Isi override, sesuaikan path binary jika berbeda:
+
+```ini
+[Service]
+ExecStart=
+ExecStart=/usr/local/bin/node_exporter --collector.systemd --collector.systemd.unit-include='(nginx|apache2?|php.*fpm|mysql|mariadb|node|pm2|ssh|sshd).*\.service'
+```
+
+Reload dan restart:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart node_exporter
+sudo systemctl status node_exporter --no-pager
+```
+
+Jika collector sudah ready tetapi unit tetap tidak match, kirim output ini agar matcher service di dashboard disesuaikan:
+
+```bash
+systemctl list-units --type=service --all | egrep 'nginx|apache|php|mysql|mariadb|node|pm2|ssh|dashboard'
+curl -s 'http://127.0.0.1:9100/metrics' | grep 'node_systemd_unit_state' | egrep 'nginx|apache|php|mysql|mariadb|node|pm2|ssh|dashboard' | head -50
+```
+
 ## Best Practice Pengembangan Monitoring
 
 Tambahan yang direkomendasikan untuk monitoring end-to-end:
@@ -286,7 +329,7 @@ Mapping fase 1 sudah memakai data operasional berikut:
 - VPN: `<l2tp-user-plant2>`.
 - Service Ubuntu yang dicek: `nginx`, `apache`, `php-fpm`, `mysql`, `mariadb`, `node`, `pm2`, dan `ssh`.
 
-Catatan penting: discovery terakhir menunjukkan SNMP Exporter dan scrape SNMP sudah terlihat, tetapi metric IF-MIB aktual belum muncul. Metric yang masih wajib tersedia untuk traffic/status interface adalah `ifHCInOctets`, `ifHCOutOctets`, dan `ifOperStatus`.
+Catatan MikroTik: IF-MIB sudah bisa dibaca jika Prometheus memiliki `ifHCInOctets`, `ifHCOutOctets`, `ifOperStatus`, `ifInErrors`, `ifOutErrors`, `ifInDiscards`, `ifOutDiscards`, dan `sysUpTime`. Dashboard memakai metric tersebut untuk traffic, status port, error/drop, dan uptime router.
 
 ## Konfigurasi yang Masih Diperlukan
 
@@ -298,4 +341,4 @@ Catatan penting: discovery terakhir menunjukkan SNMP Exporter dan scrape SNMP su
 
 ## Catatan Fase MikroTik
 
-Halaman `/mikrotik` sekarang menampilkan mapping interface, kapasitas ISP, ping gateway, jitter, packet loss, dan discovery table. Upload/download WAN akan otomatis terisi setelah Prometheus memiliki metric `ifHCInOctets` dan `ifHCOutOctets`; status port akan terisi setelah `ifOperStatus` tersedia.
+Halaman `/mikrotik` sekarang menampilkan mapping interface, kapasitas ISP, upload/download WAN, router uptime, ping gateway, jitter, error/drop 5 menit, packet loss, status port, dan discovery table. Angka live akan tampil selama job `snmp_if_mib` dan `snmp_system` menghasilkan metric yang dibutuhkan.

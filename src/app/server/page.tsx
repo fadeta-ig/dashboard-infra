@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -23,9 +23,17 @@ interface ServiceHealth {
   metricAvailable: boolean;
 }
 
+interface ServiceUnitSample {
+  unit: string;
+  state: string;
+}
+
 interface ServicesResponse {
   collector: string;
   collectorAvailable: boolean;
+  matchedUnitCount: number;
+  availableUnits: ServiceUnitSample[];
+  missingRequired: string[];
   services: ServiceHealth[];
   timestamp: string;
 }
@@ -56,6 +64,19 @@ function serviceText(service: ServiceHealth) {
   return service.state.charAt(0).toUpperCase() + service.state.slice(1);
 }
 
+function collectorText(services: ServicesResponse | null) {
+  if (!services) return 'Checking';
+  if (!services.collectorAvailable) return 'Collector missing';
+  if (services.matchedUnitCount === 0) return 'No unit matched';
+  return 'Collector ready';
+}
+
+function collectorStatus(services: ServicesResponse | null): 'healthy' | 'warning' | 'unknown' {
+  if (!services) return 'unknown';
+  if (!services.collectorAvailable) return 'unknown';
+  if (services.matchedUnitCount === 0) return 'warning';
+  return 'healthy';
+}
 export default function ServerPage() {
   const [current, setCurrent] = useState<ServerCurrentResponse | null>(null);
   const [points, setPoints] = useState<ServerRangePoint[]>([]);
@@ -212,7 +233,7 @@ export default function ServerPage() {
                   <p className="mt-1 text-xs text-muted-foreground">Service dari daftar: nginx, apache, php, mysql/mariadb, node, pm2, ssh.</p>
                 </div>
               </div>
-              <StatusIndicator status={services?.collectorAvailable ? 'healthy' : 'unknown'} text={services?.collectorAvailable ? 'Collector ready' : 'Collector missing'} />
+              <StatusIndicator status={collectorStatus(services)} text={collectorText(services)} />
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
@@ -238,9 +259,20 @@ export default function ServerPage() {
                 </tbody>
               </table>
             </div>
-            {!services?.collectorAvailable && (
+            {services && !services.collectorAvailable && (
               <div className="border-t border-border bg-amber-50 px-6 py-4 text-sm text-amber-800">
-                Metric `node_systemd_unit_state` belum tersedia. Aktifkan Node Exporter systemd collector untuk status service real-time.
+                Metric `node_systemd_unit_state` belum tersedia di Prometheus. Aktifkan Node Exporter systemd collector, lalu pastikan Prometheus scrape `node_local` sudah mengambil metric tersebut.
+              </div>
+            )}
+            {services?.collectorAvailable && services.matchedUnitCount === 0 && (
+              <div className="border-t border-border bg-amber-50 px-6 py-4 text-sm text-amber-800">
+                Collector systemd sudah tersedia, tetapi belum ada unit yang cocok dengan daftar service dashboard. Kirim output unit systemd agar matcher bisa disesuaikan dengan nama service aktual di server.
+              </div>
+            )}
+            {services?.collectorAvailable && services.availableUnits.length > 0 && (
+              <div className="border-t border-border bg-slate-50 px-6 py-4 text-xs text-slate-600">
+                <p className="font-semibold text-slate-800">Matched units: {services.availableUnits.map((item) => `${item.unit} (${item.state})`).join(', ')}</p>
+                {services.missingRequired.length > 0 && <p className="mt-1 text-amber-700">Required missing: {services.missingRequired.join(', ')}</p>}
               </div>
             )}
           </section>

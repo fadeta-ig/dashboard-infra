@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     '{job="snmp_if_mib"}',
     '{job="snmp_switch_ports"}',
     '{job="snmp_exporter_self"}',
+    '{job="snmp_system"}',
   ]);
   const metrics = buildSnmpDiscovery(series);
 

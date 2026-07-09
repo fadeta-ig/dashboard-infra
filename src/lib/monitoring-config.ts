@@ -1,4 +1,4 @@
-export type InterfaceRole = 'wan' | 'lan' | 'trunk' | 'vlan' | 'vpn' | 'loopback' | 'unused' | 'unknown';
+﻿export type InterfaceRole = 'wan' | 'lan' | 'trunk' | 'vlan' | 'vpn' | 'loopback' | 'unused' | 'unknown';
 
 export interface MikrotikInterfaceConfig {
   name: string;

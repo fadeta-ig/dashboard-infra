@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, ArrowDownToLine, ArrowUpFromLine, Gauge, RadioTower, RouterIcon, Search } from 'lucide-react';
+import { AlertCircle, ArrowDownToLine, ArrowUpFromLine, Gauge, RadioTower, RouterIcon, Search, Timer, TriangleAlert } from 'lucide-react';
 import { StatCard } from '@/components/dashboard/stat-card';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';
 import type { MikrotikDiscoveryResponse } from '@/lib/types';
@@ -22,18 +22,23 @@ interface InterfaceTraffic {
   uploadCapacityMbps: number | null;
   downloadUtilizationPercent: number | null;
   uploadUtilizationPercent: number | null;
+  errors5m: number | null;
+  discards5m: number | null;
   metricAvailable: boolean;
   includeInWanTotal: boolean;
 }
 
 interface MikrotikOverview {
   gateway: string;
+  routerUptimeSeconds: number | null;
   totalDownloadMbps: number | null;
   totalUploadMbps: number | null;
   totalDownloadCapacityMbps: number;
   totalUploadCapacityMbps: number;
   totalDownloadUtilizationPercent: number | null;
   totalUploadUtilizationPercent: number | null;
+  totalErrors5m: number | null;
+  totalDiscards5m: number | null;
   pingMs: number | null;
   jitterMs: number | null;
   packetLossPercent: number | null;
@@ -44,6 +49,19 @@ interface MikrotikOverview {
   timestamp: string;
 }
 
+function formatDuration(seconds: number | null) {
+  if (seconds === null) return 'Not available';
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function countValue(value: number | null) {
+  return value === null ? 'Not available' : value.toFixed(0);
+}
 function labelPreview(labels: Record<string, string>) {
   const entries = Object.entries(labels).slice(0, 4);
   if (entries.length === 0) return '-';
@@ -177,16 +195,18 @@ export default function MikrotikPage() {
       )}
 
       {loadingOverview ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
-          {[1, 2, 3, 4, 5].map((item) => <div key={item} className="h-32 bg-muted animate-pulse rounded-lg border border-border" />)}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-4">
+          {[1, 2, 3, 4, 5, 6, 7].map((item) => <div key={item} className="h-32 bg-muted animate-pulse rounded-lg border border-border" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-4">
           <StatCard title="WAN Download" value={metricValue(overview?.totalDownloadMbps ?? null, 'Mbps')} description={overview ? `Capacity ${overview.totalDownloadCapacityMbps} Mbps / ${utilizationText(overview.totalDownloadUtilizationPercent)}` : undefined} icon={ArrowDownToLine} status={overview?.totalDownloadMbps === null ? 'unknown' : 'healthy'} />
           <StatCard title="WAN Upload" value={metricValue(overview?.totalUploadMbps ?? null, 'Mbps')} description={overview ? `Capacity ${overview.totalUploadCapacityMbps} Mbps / ${utilizationText(overview.totalUploadUtilizationPercent)}` : undefined} icon={ArrowUpFromLine} status={overview?.totalUploadMbps === null ? 'unknown' : 'healthy'} />
+          <StatCard title="Router Uptime" value={formatDuration(overview?.routerUptimeSeconds ?? null)} icon={Timer} status={overview?.routerUptimeSeconds === null ? 'unknown' : 'healthy'} />
           <StatCard title="Ping Gateway" value={metricValue(overview?.pingMs ?? null, 'ms')} icon={RouterIcon} status={latencyStatus(overview?.pingMs ?? null, 20, 80)} />
           <StatCard title="Jitter 5m" value={metricValue(overview?.jitterMs ?? null, 'ms')} icon={Gauge} status={latencyStatus(overview?.jitterMs ?? null, 5, 20)} />
-          <StatCard title="Packet Loss 5m" value={metricValue(overview?.packetLossPercent ?? null, '%')} icon={RadioTower} status={latencyStatus(overview?.packetLossPercent ?? null, 1, 5)} />
+          <StatCard title="Errors 5m" value={countValue(overview?.totalErrors5m ?? null)} icon={TriangleAlert} status={(overview?.totalErrors5m ?? null) === null ? 'unknown' : (overview?.totalErrors5m || 0) > 0 ? 'warning' : 'healthy'} />
+          <StatCard title="Drops 5m" value={countValue(overview?.totalDiscards5m ?? null)} icon={RadioTower} status={(overview?.totalDiscards5m ?? null) === null ? 'unknown' : (overview?.totalDiscards5m || 0) > 0 ? 'warning' : 'healthy'} />
         </div>
       )}
 
@@ -207,6 +227,7 @@ export default function MikrotikPage() {
                 <th className="px-6 py-4 font-medium text-right">Download</th>
                 <th className="px-6 py-4 font-medium text-right">Upload</th>
                 <th className="px-6 py-4 font-medium text-right">Utilization</th>
+                <th className="px-6 py-4 font-medium text-right">Err/Drop 5m</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -221,11 +242,12 @@ export default function MikrotikPage() {
                   <td className="px-6 py-4 text-right font-mono">{metricValue(item.downloadMbps, 'Mbps')}</td>
                   <td className="px-6 py-4 text-right font-mono">{metricValue(item.uploadMbps, 'Mbps')}</td>
                   <td className="px-6 py-4 text-right font-mono">{utilizationText(maxUtilization(item))}</td>
+                  <td className="px-6 py-4 text-right font-mono">{countValue(item.errors5m)} / {countValue(item.discards5m)}</td>
                 </tr>
               ))}
               {(overview?.interfaces || []).length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
                     Belum ada mapping interface.
                   </td>
                 </tr>
@@ -235,7 +257,7 @@ export default function MikrotikPage() {
         </div>
         {(overview?.missingRequiredMetrics || []).length > 0 && (
           <div className="border-t border-border bg-amber-50 px-6 py-4 text-sm text-amber-800">
-            SNMP scrape sudah terlihat, tetapi metric IF-MIB belum lengkap. Pastikan module SNMP mengeluarkan ifHCInOctets, ifHCOutOctets, dan ifOperStatus.
+            SNMP scrape sudah terlihat, tetapi beberapa metric MikroTik belum lengkap. Pastikan module SNMP mengeluarkan IF-MIB counter/status dan sysUpTime.
           </div>
         )}
       </section>
