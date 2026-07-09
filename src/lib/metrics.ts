@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   InternetStatus,
   NetworkMetrics,
   NetworkRangePoint,
@@ -106,13 +106,22 @@ export function buildServerMetrics(
   };
 }
 
-function metricMatchesTarget(result: PrometheusVectorResult | PrometheusMatrixResult, targetIp: string) {
-  return (
-    result.metric.instance === targetIp ||
-    result.metric.target === targetIp ||
-    result.metric.ip === targetIp ||
-    result.metric.__param_target === targetIp
-  );
+function normalizeTargetLabel(value: string | undefined) {
+  if (!value) return '';
+
+  return value
+    .trim()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '')
+    .replace(/:\d+$/, '');
+}
+
+function metricMatchesTarget(result: PrometheusVectorResult | PrometheusMatrixResult, target: string, aliases: string[] = []) {
+  const expectedValues = [target, ...aliases]
+    .map((value) => normalizeTargetLabel(value))
+    .filter(Boolean);
+
+  return Object.values(result.metric).some((value) => expectedValues.includes(normalizeTargetLabel(value)));
 }
 
 export function buildNetworkTarget(
@@ -121,11 +130,12 @@ export function buildNetworkTarget(
   pingLatencyData: PrometheusData | null,
   metadata: Partial<NetworkTarget> = {},
 ): NetworkTarget {
+  const aliases = [metadata.label].filter((value): value is string => Boolean(value));
   const statusResult = pingStatusData?.resultType === 'vector'
-    ? pingStatusData.result.find((result) => metricMatchesTarget(result, target))
+    ? pingStatusData.result.find((result) => metricMatchesTarget(result, target, aliases))
     : undefined;
   const latencyResult = pingLatencyData?.resultType === 'vector'
-    ? pingLatencyData.result.find((result) => metricMatchesTarget(result, target))
+    ? pingLatencyData.result.find((result) => metricMatchesTarget(result, target, aliases))
     : undefined;
 
   const successValue = valueAt(statusResult);
@@ -269,4 +279,3 @@ export function buildSnmpDiscovery(series: PrometheusMetric[] | null): SnmpMetri
 export function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unexpected error';
 }
-
