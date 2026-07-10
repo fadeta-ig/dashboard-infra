@@ -207,6 +207,7 @@ Semua endpoint dilindungi session auth melalui `src/proxy.ts`, memakai rate limi
 - `GET /api/metrics/readiness`
 - `GET /api/metrics/mikrotik/discovery`
 - `GET /api/metrics/mikrotik/overview`
+- `GET /api/ops/analytics/overview?days=14`
 - `GET /api/ops/history/incidents?limit=200`
 - `GET /api/ops/history/audit?limit=200`
 - `GET /api/ops/reports/monthly?month=YYYY-MM`
@@ -238,9 +239,24 @@ Tabel yang dibuat oleh inisialisasi storage:
 
 Halaman UI yang sudah tersedia:
 
+- `/analytics` untuk health score dan capacity planning harian.
 - `/reports` untuk report bulanan dan download PDF.
 - `/incidents` untuk histori incident target down/up.
 - `/audit` untuk event audit operasional seperti reboot required, service restart state, collector missing, dan metric gap.
+
+## Health Score, Capacity, dan Temperature
+
+Tahap ini menambahkan:
+
+- Health score harian untuk domain `server`, `network`, `internet`, `prometheus`, dan `mikrotik`.
+- Capacity snapshot harian untuk CPU, RAM, disk root, RX/TX network, dan suhu server.
+- Monitoring suhu server dari metric `node_hwmon_temp_celsius` atau fallback `node_thermal_zone_temp`.
+- Halaman `/analytics` untuk melihat score domain dan trend kapasitas.
+
+Catatan:
+
+- Jika metric suhu tidak tersedia di Node Exporter, UI akan menampilkan `N/A`.
+- Collector akan meng-upsert `health_scores` dan `capacity_daily` setiap siklus history.
 
 ## Report Bulanan PDF
 

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { Activity, BookOpen, ChevronLeft, ChevronRight, ClipboardList, FileText, LogOut, Network, RouterIcon, Server, ShieldAlert, Target } from 'lucide-react';
+import { Activity, BookOpen, ChevronLeft, ChevronRight, ClipboardList, FileText, Gauge, LogOut, Network, RouterIcon, Server, ShieldAlert, Target } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebar } from '@/components/layout/sidebar-context';
 import { BRANDING } from '@/lib/branding';
@@ -12,6 +12,7 @@ const navItems = [
   { name: 'Summary Dashboard', href: '/', icon: Activity },
   { name: 'Server Status', href: '/server', icon: Server },
   { name: 'Network Health', href: '/network', icon: Network },
+  { name: 'Health & Capacity', href: '/analytics', icon: Gauge },
   { name: 'Target Jobs', href: '/targets', icon: Target },
   { name: 'Monthly Report', href: '/reports', icon: FileText },
   { name: 'Incident History', href: '/incidents', icon: ShieldAlert },

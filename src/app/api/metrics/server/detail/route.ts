@@ -1,6 +1,6 @@
 import { type NextRequest } from 'next/server';
 import { prometheusInstantQuery } from '@/lib/prometheus';
-import { buildFilesystems, buildCpuCores, buildTopProcesses, nowIso, PROMQL } from '@/lib/metrics';
+import { buildFilesystems, buildCpuCores, buildTemperatureSensors, buildTopProcesses, nowIso, PROMQL } from '@/lib/metrics';
 import { enforceMetricsRateLimit, noStoreJson } from '@/lib/rate-limit';
 import type { ServerDetailResponse } from '@/lib/types';
 
@@ -20,6 +20,8 @@ export async function GET(request: NextRequest) {
     topProcessCpuData,
     topProcessMemData,
     topProcessCountData,
+    hwmonSensorsData,
+    thermalZoneSensorsData,
   ] = await Promise.all([
     prometheusInstantQuery(PROMQL.filesystemSize),
     prometheusInstantQuery(PROMQL.filesystemAvail),
@@ -30,7 +32,11 @@ export async function GET(request: NextRequest) {
     prometheusInstantQuery(PROMQL.topProcessCpu),
     prometheusInstantQuery(PROMQL.topProcessMemory),
     prometheusInstantQuery(PROMQL.topProcessCount),
+    prometheusInstantQuery(PROMQL.hwmonTemperatureSensors),
+    prometheusInstantQuery(PROMQL.thermalZoneTemperatureSensors),
   ]);
+
+  const temperatureSensors = buildTemperatureSensors(hwmonSensorsData, thermalZoneSensorsData);
 
   const processExporterAvailable = Boolean(
     processExporterProbeData &&
@@ -45,6 +51,8 @@ export async function GET(request: NextRequest) {
       ? buildTopProcesses(topProcessCpuData, topProcessMemData, topProcessCountData)
       : [],
     processExporterAvailable,
+    temperatureSensors,
+    temperatureAvailable: temperatureSensors.length > 0,
     timestamp: nowIso(),
   };
 

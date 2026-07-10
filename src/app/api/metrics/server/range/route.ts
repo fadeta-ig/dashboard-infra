@@ -23,6 +23,8 @@ export async function GET(request: NextRequest) {
     diskWriteData,
     netRxData,
     netTxData,
+    hwmonTemperatureData,
+    thermalZoneTemperatureData,
   ] = await Promise.all([
     prometheusRangeQuery(PROMQL.cpuUsage, start, end, step),
     prometheusRangeQuery(PROMQL.ramUsage, start, end, step),
@@ -32,10 +34,12 @@ export async function GET(request: NextRequest) {
     prometheusRangeQuery(PROMQL.diskWriteBytesPerSec, start, end, step),
     prometheusRangeQuery(PROMQL.netRxBytesPerSec, start, end, step),
     prometheusRangeQuery(PROMQL.netTxBytesPerSec, start, end, step),
+    prometheusRangeQuery(PROMQL.hwmonTemperature, start, end, step),
+    prometheusRangeQuery(PROMQL.thermalZoneTemperature, start, end, step),
   ]);
 
   return noStoreJson({
     range,
-    points: alignServerRange(cpuData, ramData, loadData, swapData, diskReadData, diskWriteData, netRxData, netTxData),
+    points: alignServerRange(cpuData, ramData, loadData, swapData, diskReadData, diskWriteData, netRxData, netTxData, hwmonTemperatureData, thermalZoneTemperatureData),
   });
 }

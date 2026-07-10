@@ -16,6 +16,7 @@ export interface MonitoringThresholds {
     diskWriteMBps: ThresholdPair;
     netRxMBps: ThresholdPair;
     netTxMBps: ThresholdPair;
+    temperatureCelsius: ThresholdPair;
   };
   network: {
     pingMs: ThresholdPair;
@@ -43,6 +44,7 @@ const DEFAULT_THRESHOLDS: MonitoringThresholds = {
     // Network: >80 MB/s warning (~640 Mbps), >150 MB/s critical (~1.2 Gbps)
     netRxMBps: { warning: 80, critical: 150 },
     netTxMBps: { warning: 80, critical: 150 },
+    temperatureCelsius: { warning: 70, critical: 85 },
   },
   network: {
     pingMs: { warning: 50, critical: 100 },
@@ -81,6 +83,7 @@ export function getMonitoringThresholds(): MonitoringThresholds {
       diskWriteMBps: thresholdFromEnv('THRESHOLD_SERVER_DISK_WRITE_MBPS', DEFAULT_THRESHOLDS.server.diskWriteMBps),
       netRxMBps: thresholdFromEnv('THRESHOLD_SERVER_NET_RX_MBPS', DEFAULT_THRESHOLDS.server.netRxMBps),
       netTxMBps: thresholdFromEnv('THRESHOLD_SERVER_NET_TX_MBPS', DEFAULT_THRESHOLDS.server.netTxMBps),
+      temperatureCelsius: thresholdFromEnv('THRESHOLD_SERVER_TEMPERATURE_CELSIUS', DEFAULT_THRESHOLDS.server.temperatureCelsius),
     },
     network: {
       pingMs: thresholdFromEnv('THRESHOLD_NETWORK_PING_MS', DEFAULT_THRESHOLDS.network.pingMs),

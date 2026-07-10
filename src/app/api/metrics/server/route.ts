@@ -27,6 +27,8 @@ export async function GET(request: NextRequest) {
     netRxData,
     netTxData,
     rebootData,
+    hwmonTemperatureData,
+    thermalZoneTemperatureData,
   ] = await Promise.all([
     prometheusInstantQuery(PROMQL.cpuUsage),
     prometheusInstantQuery(PROMQL.ramUsage),
@@ -45,6 +47,8 @@ export async function GET(request: NextRequest) {
     prometheusInstantQuery(PROMQL.netRxBytesPerSec),
     prometheusInstantQuery(PROMQL.netTxBytesPerSec),
     prometheusInstantQuery(PROMQL.rebootRequired),
+    prometheusInstantQuery(PROMQL.hwmonTemperature),
+    prometheusInstantQuery(PROMQL.thermalZoneTemperature),
   ]);
 
   return noStoreJson({
@@ -54,6 +58,7 @@ export async function GET(request: NextRequest) {
       swapUsageData, swapUsedGbData, swapTotalGbData,
       diskReadData, diskWriteData, netRxData, netTxData,
       rebootData,
+      hwmonTemperatureData, thermalZoneTemperatureData,
     ),
     timestamp: nowIso(),
   });

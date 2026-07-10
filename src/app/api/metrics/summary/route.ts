@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   if (limited) return limited;
 
   const timestamp = nowIso();
-  const [cpuData, ramUsageData, ramAvailData, diskData, loadData, targetsData, pingStatusData, pingLatencyData] = await Promise.all([
+  const [cpuData, ramUsageData, ramAvailData, diskData, loadData, targetsData, pingStatusData, pingLatencyData, hwmonTemperatureData, thermalZoneTemperatureData] = await Promise.all([
     prometheusInstantQuery(PROMQL.cpuUsage),
     prometheusInstantQuery(PROMQL.ramUsage),
     prometheusInstantQuery(PROMQL.ramAvailableGb),
@@ -28,11 +28,14 @@ export async function GET(request: NextRequest) {
     prometheusInstantQuery(PROMQL.up),
     prometheusInstantQuery(PROMQL.pingSuccess),
     prometheusInstantQuery(PROMQL.pingLatency),
+    prometheusInstantQuery(PROMQL.hwmonTemperature),
+    prometheusInstantQuery(PROMQL.thermalZoneTemperature),
   ]);
 
   const server = buildServerMetrics(
     cpuData, ramUsageData, ramAvailData, diskData, loadData,
     null, null, null, null, null, null, null, null, null, null, null, null,
+    hwmonTemperatureData, thermalZoneTemperatureData,
   );
   const network = buildNetworkMetrics(pingStatusData, pingLatencyData, timestamp);
   const targets = buildTargets(targetsData, timestamp);

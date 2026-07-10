@@ -1,8 +1,9 @@
 'use client';
 
-import { Activity, ArrowDownToLine, ArrowUpFromLine, Cpu, Database, HardDrive, MemoryStick, Network, RefreshCw, Timer } from 'lucide-react';
+import { Activity, ArrowDownToLine, ArrowUpFromLine, Cpu, Database, HardDrive, MemoryStick, Network, RefreshCw, Thermometer, Timer } from 'lucide-react';
 import { StatCard } from '@/components/dashboard/stat-card';
 import type { ServerMetrics } from '@/lib/types';
+import { getMonitoringThresholds } from '@/lib/thresholds';
 
 interface Props {
   current: (ServerMetrics & { timestamp: string }) | null;
@@ -59,6 +60,7 @@ function swapDescription(usedGb: number | null, totalGb: number | null) {
 }
 
 export function ServerSnapshotGrid({ current }: Props) {
+  const thresholds = getMonitoringThresholds();
   const bytesRx = current?.netRxBytesPerSec ?? null;
   const bytesTx = current?.netTxBytesPerSec ?? null;
   const bytesRead = current?.diskReadBytesPerSec ?? null;
@@ -72,7 +74,7 @@ export function ServerSnapshotGrid({ current }: Props) {
   return (
     <div className="space-y-4">
       {/* Row 1 — Memory & Core */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
         <StatCard
           title="CPU Usage"
           value={formatPercent(current?.cpuUsage ?? null)}
@@ -107,6 +109,13 @@ export function ServerSnapshotGrid({ current }: Props) {
           description="Since last boot"
           icon={Timer}
           status="healthy"
+        />
+        <StatCard
+          title="Temperature"
+          value={current?.temperatureCelsius === null || current?.temperatureCelsius === undefined ? 'N/A' : `${current.temperatureCelsius.toFixed(1)} °C`}
+          description={current?.temperatureSource ? `Source: ${current.temperatureSource}` : 'Sensor unavailable'}
+          icon={Thermometer}
+          status={metricStatus(current?.temperatureCelsius ?? null, thresholds.server.temperatureCelsius.warning, thresholds.server.temperatureCelsius.critical)}
         />
       </div>
 

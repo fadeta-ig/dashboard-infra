@@ -1,9 +1,10 @@
 import type { RowDataPacket } from 'mysql2/promise';
 import { executeStatement, getDatabaseUnavailableReason, getPool, isDatabaseConfigured, queryRows } from '@/lib/db';
-import { buildServerMetrics, buildTargets, nowIso, PROMQL } from '@/lib/metrics';
-import { prometheusInstantQuery } from '@/lib/prometheus';
+import { buildNetworkMetrics, buildServerMetrics, buildTargets, nowIso, PROMQL } from '@/lib/metrics';
+import { prometheusInstantQuery, prometheusRangeQuery } from '@/lib/prometheus';
 import { getReadinessSnapshot } from '@/lib/readiness';
 import { getServiceHealthSnapshot } from '@/lib/service-health';
+import { getMonitoringThresholds } from '@/lib/thresholds';
 
 export type IncidentSeverity = 'warning' | 'critical';
 export type IncidentStatus = 'open' | 'resolved';
@@ -38,6 +39,27 @@ export interface AuditEventRecord {
   message: string;
   payload: Record<string, unknown>;
   eventAt: string;
+  createdAt: string;
+}
+
+export interface HealthScoreRecord {
+  id: number;
+  scoreDate: string;
+  domainKey: string;
+  score: number;
+  status: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface CapacityDailyRecord {
+  id: number;
+  snapshotDate: string;
+  metricKey: string;
+  avgValue: number | null;
+  peakValue: number | null;
+  p95Value: number | null;
+  payload: Record<string, unknown>;
   createdAt: string;
 }
 
@@ -130,6 +152,19 @@ function safeJsonParse(value: unknown) {
 function toIsoString(value: Date | string | null | undefined) {
   if (!value) return value ?? null;
   return value instanceof Date ? value.toISOString() : value;
+}
+
+function toDateKey(value: string) {
+  return value.slice(0, 10);
+}
+
+function round(value: number, digits = 2) {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function clampScore(value: number) {
+  return Math.max(0, Math.min(100, round(value, 2)));
 }
 
 export async function ensureMonitoringSchema() {
@@ -266,6 +301,8 @@ function buildServiceStateMap(snapshot: Awaited<ReturnType<typeof getServiceHeal
 async function collectCurrentState() {
   const [
     targetsData,
+    pingStatusData,
+    pingLatencyData,
     cpuData,
     ramUsageData,
     ramAvailData,
@@ -283,10 +320,14 @@ async function collectCurrentState() {
     netRxData,
     netTxData,
     rebootData,
+    hwmonTemperatureData,
+    thermalZoneTemperatureData,
     serviceSnapshot,
     readinessSnapshot,
   ] = await Promise.all([
     prometheusInstantQuery(PROMQL.up),
+    prometheusInstantQuery(PROMQL.pingSuccess),
+    prometheusInstantQuery(PROMQL.pingLatency),
     prometheusInstantQuery(PROMQL.cpuUsage),
     prometheusInstantQuery(PROMQL.ramUsage),
     prometheusInstantQuery(PROMQL.ramAvailableGb),
@@ -304,6 +345,8 @@ async function collectCurrentState() {
     prometheusInstantQuery(PROMQL.netRxBytesPerSec),
     prometheusInstantQuery(PROMQL.netTxBytesPerSec),
     prometheusInstantQuery(PROMQL.rebootRequired),
+    prometheusInstantQuery(PROMQL.hwmonTemperature),
+    prometheusInstantQuery(PROMQL.thermalZoneTemperature),
     getServiceHealthSnapshot(),
     getReadinessSnapshot(),
   ]);
@@ -311,6 +354,7 @@ async function collectCurrentState() {
   return {
     timestamp: nowIso(),
     targets: buildTargets(targetsData, nowIso()),
+    network: buildNetworkMetrics(pingStatusData, pingLatencyData, nowIso()),
     server: buildServerMetrics(
       cpuData,
       ramUsageData,
@@ -329,10 +373,182 @@ async function collectCurrentState() {
       netRxData,
       netTxData,
       rebootData,
+      hwmonTemperatureData,
+      thermalZoneTemperatureData,
     ),
     services: serviceSnapshot,
     readiness: readinessSnapshot,
   };
+}
+
+function evaluateScoreStatus(score: number) {
+  if (score >= 90) return 'healthy';
+  if (score >= 75) return 'warning';
+  return 'critical';
+}
+
+async function upsertHealthScore(scoreDate: string, domainKey: string, score: number, payload: Record<string, unknown>) {
+  const status = evaluateScoreStatus(score);
+  await executeStatement(
+    `INSERT INTO health_scores (score_date, domain_key, score, status, payload_json)
+     VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE score = VALUES(score), status = VALUES(status), payload_json = VALUES(payload_json)`,
+    [scoreDate, domainKey, score, status, JSON.stringify(payload)],
+  );
+}
+
+function buildHealthScores(snapshot: Awaited<ReturnType<typeof collectCurrentState>>) {
+  const thresholds = getMonitoringThresholds();
+  const scores: Array<{ domainKey: string; score: number; payload: Record<string, unknown> }> = [];
+
+  const serverPenalty =
+    (snapshot.server.status === 'critical' ? 35 : snapshot.server.status === 'warning' ? 15 : 0) +
+    (snapshot.server.rebootRequired ? 10 : 0) +
+    (snapshot.server.temperatureCelsius !== null && snapshot.server.temperatureCelsius >= thresholds.server.temperatureCelsius.critical
+      ? 20
+      : snapshot.server.temperatureCelsius !== null && snapshot.server.temperatureCelsius >= thresholds.server.temperatureCelsius.warning
+        ? 10
+        : 0) +
+    snapshot.services.services.filter((service) => service.required && service.active === false).length * 20 +
+    snapshot.services.missingRequired.length * 10;
+  scores.push({
+    domainKey: 'server',
+    score: clampScore(100 - serverPenalty),
+    payload: {
+      status: snapshot.server.status,
+      rebootRequired: snapshot.server.rebootRequired,
+      temperatureCelsius: snapshot.server.temperatureCelsius,
+      missingRequiredServices: snapshot.services.missingRequired,
+    },
+  });
+
+  const networkDownCount = snapshot.network.additionalTargets.filter((target) => target.up === false).length;
+  const networkPenalty =
+    (snapshot.network.gateway.up === false ? 35 : 0) +
+    networkDownCount * 5;
+  scores.push({
+    domainKey: 'network',
+    score: clampScore(100 - networkPenalty),
+    payload: {
+      gateway: snapshot.network.gateway.up,
+      additionalDownCount: networkDownCount,
+    },
+  });
+
+  const internetPenalty = snapshot.network.internetStatus === 'critical'
+    ? 50
+    : snapshot.network.internetStatus === 'degraded'
+      ? 20
+      : snapshot.network.internetStatus === 'unknown'
+        ? 30
+        : 0;
+  scores.push({
+    domainKey: 'internet',
+    score: clampScore(100 - internetPenalty),
+    payload: {
+      internetStatus: snapshot.network.internetStatus,
+      googleDns: snapshot.network.googleDns.up,
+      cloudflareDns: snapshot.network.cloudflareDns.up,
+    },
+  });
+
+  const prometheusDownTargets = snapshot.targets.filter((target) => !target.up).length;
+  const prometheusPenalty =
+    (!snapshot.readiness.prometheusReachable ? 50 : 0) +
+    snapshot.readiness.categories.filter((category) => category.status === 'missing').length * 15 +
+    snapshot.readiness.categories.filter((category) => category.status === 'partial').length * 8 +
+    Math.min(prometheusDownTargets * 3, 30);
+  scores.push({
+    domainKey: 'prometheus',
+    score: clampScore(100 - prometheusPenalty),
+    payload: {
+      prometheusReachable: snapshot.readiness.prometheusReachable,
+      downTargets: prometheusDownTargets,
+      readiness: snapshot.readiness.categories.map((category) => ({
+        key: category.key,
+        status: category.status,
+      })),
+    },
+  });
+
+  const mikrotikTargets = snapshot.targets.filter((target) => /mikrotik|snmp/i.test(target.job));
+  const mikrotikDownTargets = mikrotikTargets.filter((target) => !target.up).length;
+  const mikrotikScore = mikrotikTargets.length === 0
+    ? 75
+    : clampScore(100 - Math.min(mikrotikDownTargets * 25, 75));
+  scores.push({
+    domainKey: 'mikrotik',
+    score: mikrotikScore,
+    payload: {
+      totalTargets: mikrotikTargets.length,
+      downTargets: mikrotikDownTargets,
+    },
+  });
+
+  return scores;
+}
+
+function extractMatrixValues(data: Awaited<ReturnType<typeof prometheusRangeQuery>>) {
+  if (!data || data.resultType !== 'matrix' || data.result.length === 0) return [] as number[];
+  return data.result[0].values
+    .map(([, value]) => Number.parseFloat(value))
+    .filter((value) => Number.isFinite(value));
+}
+
+function calculateP95(values: number[]) {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * 0.95) - 1));
+  return sorted[index];
+}
+
+async function upsertCapacityDaily(snapshotDate: string, metricKey: string, values: number[], payload: Record<string, unknown>) {
+  const avgValue = values.length > 0 ? round(values.reduce((sum, value) => sum + value, 0) / values.length, 4) : null;
+  const peakValue = values.length > 0 ? round(Math.max(...values), 4) : null;
+  const p95Value = values.length > 0 ? round(calculateP95(values) ?? 0, 4) : null;
+
+  await executeStatement(
+    `INSERT INTO capacity_daily (snapshot_date, metric_key, avg_value, peak_value, p95_value, payload_json)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       avg_value = VALUES(avg_value),
+       peak_value = VALUES(peak_value),
+       p95_value = VALUES(p95_value),
+       payload_json = VALUES(payload_json)`,
+    [snapshotDate, metricKey, avgValue, peakValue, p95Value, JSON.stringify(payload)],
+  );
+}
+
+async function updateCapacitySnapshots(snapshot: Awaited<ReturnType<typeof collectCurrentState>>) {
+  const snapshotDate = toDateKey(snapshot.timestamp);
+  const start = Math.floor(new Date(`${snapshotDate}T00:00:00.000Z`).getTime() / 1000);
+  const end = Math.floor(new Date(snapshot.timestamp).getTime() / 1000);
+  const step = '15m';
+
+  const [
+    cpuRange,
+    ramRange,
+    diskRange,
+    netRxRange,
+    netTxRange,
+    tempRange,
+  ] = await Promise.all([
+    prometheusRangeQuery(PROMQL.cpuUsage, start, end, step),
+    prometheusRangeQuery(PROMQL.ramUsage, start, end, step),
+    prometheusRangeQuery(PROMQL.diskRootUsage, start, end, step),
+    prometheusRangeQuery(PROMQL.netRxBytesPerSec, start, end, step),
+    prometheusRangeQuery(PROMQL.netTxBytesPerSec, start, end, step),
+    prometheusRangeQuery(PROMQL.hwmonTemperature, start, end, step),
+  ]);
+
+  await Promise.all([
+    upsertCapacityDaily(snapshotDate, 'server_cpu_percent', extractMatrixValues(cpuRange), { unit: 'percent' }),
+    upsertCapacityDaily(snapshotDate, 'server_ram_percent', extractMatrixValues(ramRange), { unit: 'percent' }),
+    upsertCapacityDaily(snapshotDate, 'server_disk_root_percent', extractMatrixValues(diskRange), { unit: 'percent' }),
+    upsertCapacityDaily(snapshotDate, 'server_net_rx_bytes_per_sec', extractMatrixValues(netRxRange), { unit: 'bytes_per_sec' }),
+    upsertCapacityDaily(snapshotDate, 'server_net_tx_bytes_per_sec', extractMatrixValues(netTxRange), { unit: 'bytes_per_sec' }),
+    upsertCapacityDaily(snapshotDate, 'server_temperature_celsius', extractMatrixValues(tempRange), { unit: 'celsius' }),
+  ]);
 }
 
 export async function runHistoryCollection() {
@@ -491,6 +707,13 @@ export async function runHistoryCollection() {
   }
   await setStoredState('readiness:categories', currentReadinessState);
 
+  const scoreDate = toDateKey(snapshot.timestamp);
+  for (const score of buildHealthScores(snapshot)) {
+    await upsertHealthScore(scoreDate, score.domainKey, score.score, score.payload);
+  }
+
+  await updateCapacitySnapshots(snapshot);
+
   return {
     ok: true,
     storageEnabled: true,
@@ -581,4 +804,67 @@ export async function listAuditEvents(limit = 100) {
     eventAt: toIsoString(row.event_at) as string,
     createdAt: toIsoString(row.created_at) as string,
   })) satisfies AuditEventRecord[];
+}
+
+export async function listHealthScores(days = 14) {
+  await ensureMonitoringSchema();
+  const safeDays = Math.min(Math.max(days, 1), 90);
+  const rows = await queryRows<RowDataPacket & {
+    id: number;
+    score_date: Date | string;
+    domain_key: string;
+    score: number | string;
+    status: string;
+    payload_json: string | null;
+    created_at: Date | string;
+  }>(
+    `SELECT *
+     FROM health_scores
+     WHERE score_date >= DATE_SUB(UTC_DATE(), INTERVAL ${safeDays - 1} DAY)
+     ORDER BY score_date DESC, domain_key ASC`,
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    scoreDate: toIsoString(row.score_date) as string,
+    domainKey: row.domain_key,
+    score: typeof row.score === 'number' ? row.score : Number.parseFloat(row.score),
+    status: row.status,
+    payload: safeJsonParse(row.payload_json),
+    createdAt: toIsoString(row.created_at) as string,
+  })) satisfies HealthScoreRecord[];
+}
+
+export async function listCapacityDaily(days = 14) {
+  await ensureMonitoringSchema();
+  const safeDays = Math.min(Math.max(days, 1), 90);
+  const rows = await queryRows<RowDataPacket & {
+    id: number;
+    snapshot_date: Date | string;
+    metric_key: string;
+    avg_value: number | string | null;
+    peak_value: number | string | null;
+    p95_value: number | string | null;
+    payload_json: string | null;
+    created_at: Date | string;
+  }>(
+    `SELECT *
+     FROM capacity_daily
+     WHERE snapshot_date >= DATE_SUB(UTC_DATE(), INTERVAL ${safeDays - 1} DAY)
+     ORDER BY snapshot_date DESC, metric_key ASC`,
+  );
+
+  const toNumber = (value: number | string | null) =>
+    value === null ? null : typeof value === 'number' ? value : Number.parseFloat(value);
+
+  return rows.map((row) => ({
+    id: row.id,
+    snapshotDate: toIsoString(row.snapshot_date) as string,
+    metricKey: row.metric_key,
+    avgValue: toNumber(row.avg_value),
+    peakValue: toNumber(row.peak_value),
+    p95Value: toNumber(row.p95_value),
+    payload: safeJsonParse(row.payload_json),
+    createdAt: toIsoString(row.created_at) as string,
+  })) satisfies CapacityDailyRecord[];
 }

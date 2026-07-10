@@ -46,6 +46,7 @@ export function ServerCharts({ points }: Props) {
   const hasDiskIO = points.some((p) => p.diskReadMBps !== null || p.diskWriteMBps !== null);
   const hasNetwork = points.some((p) => p.netRxMBps !== null || p.netTxMBps !== null);
   const hasSwap = points.some((p) => p.swap !== null && p.swap > 0);
+  const hasTemperature = points.some((p) => p.temperatureCelsius !== null);
 
   return (
     <div className="space-y-6">
@@ -170,6 +171,30 @@ export function ServerCharts({ points }: Props) {
             </section>
           )}
         </div>
+      )}
+
+      {hasTemperature && (
+        <section className="panel-surface rounded-lg p-6">
+          <h2 className="text-sm font-semibold text-slate-600 mb-4 uppercase tracking-wide">Temperature (°C)</h2>
+          <div className="h-[220px] sm:h-[240px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={points} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="timestamp" tickFormatter={formatXAxis} {...AXIS_PROPS} />
+                <YAxis {...AXIS_PROPS} />
+                <Tooltip
+                  labelFormatter={formatTooltipLabel}
+                  formatter={(value: unknown) => {
+                    if (typeof value !== 'number') return ['N/A', 'Temperature'];
+                    return [`${value.toFixed(2)} °C`, 'Temperature'];
+                  }}
+                  {...CHART_STYLE}
+                />
+                <Line type="monotone" dataKey="temperatureCelsius" stroke="#ef4444" strokeWidth={2} dot={false} activeDot={{ r: 4 }} connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
       )}
     </div>
   );

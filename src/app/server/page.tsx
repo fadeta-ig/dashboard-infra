@@ -125,7 +125,7 @@ export default function ServerPage() {
       const detailData = await fetchDetail();
       setDetail(detailData);
     } catch {
-      // Detail is non-critical — don't surface error to user
+      // Detail is non-critical.
     }
   }, [fetchDetail]);
 
@@ -145,21 +145,20 @@ export default function ServerPage() {
   }, [refreshSnapshot, refreshDetail]);
 
   return (
-    <div className="space-y-6 animate-fade-in animate-slide-up">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="animate-fade-in animate-slide-up space-y-6">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-primary">Server Ubuntu</h1>
-          <p className="text-sm text-muted-foreground mt-1 font-medium">
-            Full observability: CPU, RAM, swap, disk I/O, network, uptime, dan service health — server-wig
+          <p className="mt-1 text-sm font-medium text-muted-foreground">
+            Full observability: CPU, RAM, swap, disk I/O, network, uptime, temperature, dan service health untuk server-wig
           </p>
         </div>
-        <div className="flex gap-2 bg-card p-1 rounded-md border border-border">
+        <div className="flex gap-2 rounded-md border border-border bg-card p-1">
           {['1h', '6h', '24h'].map((item) => (
             <button
               key={item}
               onClick={() => setRange(item)}
-              className={`px-3 py-1 text-sm font-medium rounded-sm transition-colors ${
+              className={`rounded-sm px-3 py-1 text-sm font-medium transition-colors ${
                 range === item ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
@@ -169,62 +168,76 @@ export default function ServerPage() {
         </div>
       </div>
 
-      {/* Error State */}
       {error ? (
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6">
-          <h2 className="text-lg font-bold text-destructive flex items-center gap-2">
+          <h2 className="flex items-center gap-2 text-lg font-bold text-destructive">
             <Activity className="h-5 w-5" /> Connection Error
           </h2>
-          <p className="text-muted-foreground mt-2">{error}</p>
+          <p className="mt-2 text-muted-foreground">{error}</p>
           <button
             onClick={() => void refreshSnapshot()}
-            className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90"
+            className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
           >
             Retry Connection
           </button>
         </div>
       ) : loading ? (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-            {Array.from({ length: 10 }).map((_, i) => (
-              <div key={i} className="h-28 bg-muted animate-pulse rounded-lg border border-border" />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+            {Array.from({ length: 12 }).map((_, index) => (
+              <div key={index} className="h-28 animate-pulse rounded-lg border border-border bg-muted" />
             ))}
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="h-[280px] bg-muted animate-pulse rounded-lg border border-border" />
-            <div className="h-[280px] bg-muted animate-pulse rounded-lg border border-border" />
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div className="h-[280px] animate-pulse rounded-lg border border-border bg-muted" />
+            <div className="h-[280px] animate-pulse rounded-lg border border-border bg-muted" />
           </div>
         </div>
       ) : (
         <>
-          {/* Reboot Alert */}
           <ServerRebootBanner rebootRequired={current?.rebootRequired ?? null} />
-
-          {/* Snapshot Stats */}
           <ServerSnapshotGrid current={current} />
-
-          {/* Charts */}
           <ServerCharts points={points} />
 
-          {/* CPU Cores Heatmap */}
-          {detail && detail.cpuCores.length > 0 && (
-            <ServerCpuCores cores={detail.cpuCores} />
+          {detail && detail.cpuCores.length > 0 && <ServerCpuCores cores={detail.cpuCores} />}
+          {detail && <ServerFilesystems filesystems={detail.filesystems} />}
+
+          {detail?.temperatureAvailable && (
+            <section className="panel-surface overflow-hidden rounded-lg">
+              <div className="border-b border-border bg-white/60 px-6 py-4">
+                <h2 className="font-semibold">Temperature Sensors</h2>
+                <p className="mt-1 text-xs text-muted-foreground">Sensor suhu dari Node Exporter hwmon atau thermal zone.</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b border-border bg-muted/50 text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-6 py-4 font-medium">Sensor</th>
+                      <th className="px-6 py-4 font-medium">Chip / Zone</th>
+                      <th className="px-6 py-4 font-medium">Temperature</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {detail.temperatureSensors.map((sensor) => (
+                      <tr key={`${sensor.sensor}-${sensor.chip || 'none'}`} className="transition-colors hover:bg-muted/50">
+                        <td className="px-6 py-4 font-medium">{sensor.label || sensor.sensor}</td>
+                        <td className="px-6 py-4 text-muted-foreground">{sensor.chip || '-'}</td>
+                        <td className="px-6 py-4 font-mono">{sensor.temperatureCelsius === null ? 'N/A' : `${sensor.temperatureCelsius.toFixed(1)} °C`}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
           )}
 
-          {/* Filesystem Mountpoints */}
-          {detail && (
-            <ServerFilesystems filesystems={detail.filesystems} />
-          )}
-
-          {/* Top Processes */}
           <ServerTopProcesses
             processes={detail?.topProcesses ?? []}
             available={detail?.processExporterAvailable ?? false}
           />
 
-          {/* Service Health */}
-          <section className="panel-surface rounded-lg overflow-hidden">
-            <div className="px-6 py-4 border-b border-border bg-white/60 flex items-center justify-between gap-4">
+          <section className="panel-surface overflow-hidden rounded-lg">
+            <div className="flex items-center justify-between gap-4 border-b border-border bg-white/60 px-6 py-4">
               <div className="flex items-center gap-3">
                 <ServerCog className="h-5 w-5 text-slate-950" />
                 <div>
@@ -235,8 +248,8 @@ export default function ServerPage() {
               <StatusIndicator status={collectorStatus(services)} text={collectorText(services)} />
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-muted/50 text-muted-foreground text-xs uppercase border-b border-border">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-border bg-muted/50 text-xs uppercase text-muted-foreground">
                   <tr>
                     <th className="px-6 py-4 font-medium">Service</th>
                     <th className="px-6 py-4 font-medium">Status</th>
@@ -246,7 +259,7 @@ export default function ServerPage() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {(services?.services || []).map((service) => (
-                    <tr key={service.key} className="hover:bg-muted/50 transition-colors">
+                    <tr key={service.key} className="transition-colors hover:bg-muted/50">
                       <td className="px-6 py-4 font-medium">{service.label}</td>
                       <td className="px-6 py-4">
                         <StatusIndicator status={serviceStatus(service)} text={serviceText(service)} />
@@ -271,7 +284,7 @@ export default function ServerPage() {
             {services?.collectorAvailable && services.availableUnits.length > 0 && (
               <div className="border-t border-border bg-slate-50 px-6 py-4 text-xs text-slate-600">
                 <p className="font-semibold text-slate-800">
-                  Matched: {services.availableUnits.map((u) => `${u.unit} (${u.state})`).join(', ')}
+                  Matched: {services.availableUnits.map((unit) => `${unit.unit} (${unit.state})`).join(', ')}
                 </p>
                 {services.missingRequired.length > 0 && (
                   <p className="mt-1 text-amber-700">Required missing: {services.missingRequired.join(', ')}</p>

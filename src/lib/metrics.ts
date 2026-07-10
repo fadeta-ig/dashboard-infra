@@ -13,6 +13,7 @@ import type {
   ServerRangePoint,
   SnmpMetricDiscovery,
   Status,
+  TemperatureSensor,
   TargetHealth,
   TopProcess,
 } from '@/lib/types';
@@ -82,6 +83,12 @@ export const PROMQL = {
   // ─── Reboot Required ────────────────────────────────────────────────────
   /** Provided by node_exporter when /run/reboot-required exists on Ubuntu */
   rebootRequired: 'node_reboot_required',
+
+  // Temperature
+  hwmonTemperature: 'max(node_hwmon_temp_celsius)',
+  thermalZoneTemperature: 'max(node_thermal_zone_temp) / 1000',
+  hwmonTemperatureSensors: 'node_hwmon_temp_celsius',
+  thermalZoneTemperatureSensors: 'node_thermal_zone_temp / 1000',
 
   // ─── Process Exporter (conditional) ─────────────────────────────────────
   /** Probe metric — if empty vector, process_exporter is not running */
@@ -175,8 +182,13 @@ export function buildServerMetrics(
   netRxData: PrometheusData | null,
   netTxData: PrometheusData | null,
   rebootData: PrometheusData | null,
+  hwmonTemperatureData: PrometheusData | null = null,
+  thermalZoneTemperatureData: PrometheusData | null = null,
 ): ServerMetrics {
   const rawReboot = extractSingleValue(rebootData);
+  const hwmonTemperature = extractSingleValue(hwmonTemperatureData);
+  const thermalZoneTemperature = extractSingleValue(thermalZoneTemperatureData);
+  const temperatureCelsius = hwmonTemperature ?? thermalZoneTemperature;
   const server: Omit<ServerMetrics, 'status'> = {
     cpuUsage: roundMetric(extractSingleValue(cpuData), 2),
     ramUsage: roundMetric(extractSingleValue(ramUsageData), 2),
@@ -195,9 +207,42 @@ export function buildServerMetrics(
     netRxBytesPerSec: roundMetric(extractSingleValue(netRxData), 0),
     netTxBytesPerSec: roundMetric(extractSingleValue(netTxData), 0),
     rebootRequired: rawReboot === null ? null : rawReboot === 1,
+    temperatureCelsius: roundMetric(temperatureCelsius, 2),
+    temperatureSource: hwmonTemperature !== null ? 'hwmon' : thermalZoneTemperature !== null ? 'thermal_zone' : null,
   };
 
   return { ...server, status: getServerStatus(server) };
+}
+
+export function buildTemperatureSensors(
+  hwmonSensorsData: PrometheusData | null,
+  thermalZoneSensorsData: PrometheusData | null,
+): TemperatureSensor[] {
+  const sensors: TemperatureSensor[] = [];
+
+  if (hwmonSensorsData?.resultType === 'vector') {
+    for (const result of hwmonSensorsData.result) {
+      sensors.push({
+        sensor: result.metric.sensor || result.metric.chip || result.metric.instance || 'hwmon',
+        chip: result.metric.chip || null,
+        label: result.metric.sensor || result.metric.chip || null,
+        temperatureCelsius: roundMetric(valueAt(result), 2),
+      });
+    }
+  }
+
+  if (thermalZoneSensorsData?.resultType === 'vector') {
+    for (const result of thermalZoneSensorsData.result) {
+      sensors.push({
+        sensor: result.metric.zone || result.metric.type || result.metric.instance || 'thermal_zone',
+        chip: result.metric.type || null,
+        label: result.metric.zone || result.metric.type || null,
+        temperatureCelsius: roundMetric(valueAt(result), 2),
+      });
+    }
+  }
+
+  return sensors.sort((left, right) => (right.temperatureCelsius || 0) - (left.temperatureCelsius || 0));
 }
 
 /**
@@ -425,6 +470,8 @@ export function alignServerRange(
   diskWriteData: PrometheusData | null = null,
   netRxData: PrometheusData | null = null,
   netTxData: PrometheusData | null = null,
+  hwmonTemperatureData: PrometheusData | null = null,
+  thermalZoneTemperatureData: PrometheusData | null = null,
 ): ServerRangePoint[] {
   const cpuValues = cpuData?.resultType === 'matrix' ? cpuData.result[0]?.values || [] : [];
   const ramValues = ramData?.resultType === 'matrix' ? ramData.result[0]?.values || [] : [];
@@ -434,6 +481,8 @@ export function alignServerRange(
   const diskWriteValues = diskWriteData?.resultType === 'matrix' ? diskWriteData.result[0]?.values || [] : [];
   const netRxValues = netRxData?.resultType === 'matrix' ? netRxData.result[0]?.values || [] : [];
   const netTxValues = netTxData?.resultType === 'matrix' ? netTxData.result[0]?.values || [] : [];
+  const hwmonTemperatureValues = hwmonTemperatureData?.resultType === 'matrix' ? hwmonTemperatureData.result[0]?.values || [] : [];
+  const thermalZoneTemperatureValues = thermalZoneTemperatureData?.resultType === 'matrix' ? thermalZoneTemperatureData.result[0]?.values || [] : [];
 
   const toValueMap = (values: [number, string][]) =>
     new Map(values.map(([timestamp, rawValue]) => [timestamp, rawValue]));
@@ -445,6 +494,8 @@ export function alignServerRange(
   const diskWriteMap = toValueMap(diskWriteValues);
   const netRxMap = toValueMap(netRxValues);
   const netTxMap = toValueMap(netTxValues);
+  const hwmonTemperatureMap = toValueMap(hwmonTemperatureValues);
+  const thermalZoneTemperatureMap = toValueMap(thermalZoneTemperatureValues);
 
   const parseMappedValue = (map: Map<number, string>, timestamp: number) => {
     const rawValue = map.get(timestamp);
@@ -463,6 +514,10 @@ export function alignServerRange(
     diskWriteMBps: bytesToMBps(parseMappedValue(diskWriteMap, timestamp)),
     netRxMBps: bytesToMBps(parseMappedValue(netRxMap, timestamp)),
     netTxMBps: bytesToMBps(parseMappedValue(netTxMap, timestamp)),
+    temperatureCelsius: roundMetric(
+      parseMappedValue(hwmonTemperatureMap, timestamp) ?? parseMappedValue(thermalZoneTemperatureMap, timestamp),
+      2,
+    ),
   }));
 }
 

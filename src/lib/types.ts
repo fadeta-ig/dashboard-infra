@@ -39,44 +39,28 @@ export interface TargetHealth {
   lastChecked: string;
 }
 
-/** Core server snapshot — extended with all observability metrics */
 export interface ServerMetrics {
-  // ─── Core (existing) ───────────────────────────────────────────
   cpuUsage: number | null;
   ramUsage: number | null;
   ramAvailableGb: number | null;
   diskUsage: number | null;
   load1: number | null;
   status: Status;
-
-  // ─── Uptime ────────────────────────────────────────────────────
   uptimeSeconds: number | null;
-
-  // ─── Load Extended ─────────────────────────────────────────────
   load5: number | null;
   load15: number | null;
-
-  // ─── CPU Detail ────────────────────────────────────────────────
   cpuCoreCount: number | null;
-
-  // ─── Swap ──────────────────────────────────────────────────────
   swapUsagePercent: number | null;
   swapUsedGb: number | null;
   swapTotalGb: number | null;
-
-  // ─── Disk I/O Throughput ───────────────────────────────────────
   diskReadBytesPerSec: number | null;
   diskWriteBytesPerSec: number | null;
-
-  // ─── Network Server ────────────────────────────────────────────
   netRxBytesPerSec: number | null;
   netTxBytesPerSec: number | null;
-
-  // ─── Reboot Required ───────────────────────────────────────────
   rebootRequired: boolean | null;
+  temperatureCelsius: number | null;
+  temperatureSource: string | null;
 }
-
-// ─── Filesystem per Mountpoint ──────────────────────────────────────────────
 
 export interface FilesystemMount {
   mountpoint: string;
@@ -86,20 +70,15 @@ export interface FilesystemMount {
   usedGb: number | null;
   totalGb: number | null;
   availGb: number | null;
-  /** null for vfat/fat32 which don't support inodes */
   inodeUsagePercent: number | null;
   inodesTotal: number | null;
   inodesFree: number | null;
 }
 
-// ─── CPU Per-Core ───────────────────────────────────────────────────────────
-
 export interface CpuCoreUsage {
   cpu: string;
   usagePercent: number | null;
 }
-
-// ─── Top Processes (process_exporter) ───────────────────────────────────────
 
 export interface TopProcess {
   name: string;
@@ -108,17 +87,22 @@ export interface TopProcess {
   numProcs: number | null;
 }
 
-// ─── Detail Response (heavy, polled every 60s) ──────────────────────────────
+export interface TemperatureSensor {
+  sensor: string;
+  chip: string | null;
+  label: string | null;
+  temperatureCelsius: number | null;
+}
 
 export interface ServerDetailResponse {
   filesystems: FilesystemMount[];
   cpuCores: CpuCoreUsage[];
   topProcesses: TopProcess[];
   processExporterAvailable: boolean;
+  temperatureSensors: TemperatureSensor[];
+  temperatureAvailable: boolean;
   timestamp: string;
 }
-
-// ─── Network ────────────────────────────────────────────────────────────────
 
 export interface NetworkTarget {
   target: string;
@@ -138,8 +122,6 @@ export interface NetworkMetrics {
   timestamp: string;
 }
 
-// ─── Summary ────────────────────────────────────────────────────────────────
-
 export interface SummaryResponse {
   status: Status;
   server: ServerMetrics;
@@ -149,27 +131,23 @@ export interface SummaryResponse {
   queryHealth: Status;
 }
 
-// ─── Range Points ───────────────────────────────────────────────────────────
-
 export interface ServerRangePoint {
   timestamp: number;
   cpu: number | null;
   ram: number | null;
   load: number | null;
-  // Extended
   swap: number | null;
   diskReadMBps: number | null;
   diskWriteMBps: number | null;
   netRxMBps: number | null;
   netTxMBps: number | null;
+  temperatureCelsius: number | null;
 }
 
 export interface NetworkRangePoint {
   timestamp: number;
   [targetId: string]: number | null | undefined;
 }
-
-// ─── SNMP / MikroTik ────────────────────────────────────────────────────────
 
 export interface SnmpMetricDiscovery {
   name: string;
