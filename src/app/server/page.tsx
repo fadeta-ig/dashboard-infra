@@ -185,7 +185,7 @@ export default function ServerPage() {
         </div>
       ) : loading ? (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
             {Array.from({ length: 10 }).map((_, i) => (
               <div key={i} className="h-28 bg-muted animate-pulse rounded-lg border border-border" />
             ))}

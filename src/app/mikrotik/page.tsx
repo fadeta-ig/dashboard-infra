@@ -217,7 +217,42 @@ export default function MikrotikPage() {
             Configured {overview?.configuredInterfaceCount || 0} interfaces / live metrics {overview?.liveInterfaceMetricCount || 0}. Missing: {(overview?.missingRequiredMetrics || []).join(', ') || 'none'}.
           </p>
         </div>
-        <div className="overflow-x-auto">
+        <div className="grid gap-3 p-4 md:hidden">
+          {(overview?.interfaces || []).map((item) => (
+            <article key={`${item.instance}-${item.name}`} className="rounded-lg border border-border bg-card p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-mono font-medium break-all">{item.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{item.displayName}{item.comment ? ` / ${item.comment}` : ''}</p>
+                </div>
+                <StatusIndicator status={portStatus(item)} text={portStatusText(item)} />
+              </div>
+              <div className="text-xs text-muted-foreground">{roleBadge(item.role)}{item.isp ? ` / ${item.isp}` : ''}{item.role === 'wan' ? item.includeInWanTotal ? ' / total source' : ' / physical only' : ''}</div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">Download</p>
+                  <p className="font-mono">{metricValue(item.downloadMbps, 'Mbps')}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">Upload</p>
+                  <p className="font-mono">{metricValue(item.uploadMbps, 'Mbps')}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">Utilization</p>
+                  <p className="font-mono">{utilizationText(maxUtilization(item))}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">Err / Drop 5m</p>
+                  <p className="font-mono">{countValue(item.errors5m)} / {countValue(item.discards5m)}</p>
+                </div>
+              </div>
+            </article>
+          ))}
+          {(overview?.interfaces || []).length === 0 && (
+            <div className="px-6 py-8 text-center text-muted-foreground">Belum ada mapping interface.</div>
+          )}
+        </div>
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-muted/50 text-muted-foreground text-xs uppercase border-b border-border">
               <tr>
@@ -270,7 +305,22 @@ export default function MikrotikPage() {
               {data.message} Total series: {data.totalSeries}. Last checked: {new Date(data.timestamp).toLocaleTimeString()}.
             </p>
           </div>
-          <div className="overflow-x-auto">
+          <div className="grid gap-3 p-4 md:hidden">
+            {data.metrics.map((metric) => (
+              <article key={metric.name} className="rounded-lg border border-border bg-card p-4 space-y-2">
+                <p className="font-mono font-medium break-all">{metric.name}</p>
+                <div className="text-xs text-muted-foreground">
+                  <p><span className="font-semibold text-foreground">Jobs:</span> {metric.jobs.join(', ') || '-'}</p>
+                  <p className="break-all"><span className="font-semibold text-foreground">Instances:</span> {metric.instances.join(', ') || '-'}</p>
+                  <p className="break-all"><span className="font-semibold text-foreground">Sample:</span> {labelPreview(metric.sampleLabels)}</p>
+                </div>
+              </article>
+            ))}
+            {data.metrics.length === 0 && (
+              <div className="px-6 py-8 text-center text-muted-foreground">No SNMP metrics found yet.</div>
+            )}
+          </div>
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead className="bg-muted/50 text-muted-foreground text-xs uppercase border-b border-border">
                 <tr>

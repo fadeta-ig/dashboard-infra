@@ -31,7 +31,7 @@ export function Sidebar() {
   return (
     <aside 
       className={cn(
-        "hidden md:flex flex-col bg-white text-slate-800 h-screen fixed top-0 left-0 border-r border-slate-200 transition-all duration-300 ease-in-out z-40",
+        "hidden lg:flex flex-col bg-white text-slate-800 h-screen fixed top-0 left-0 border-r border-slate-200 transition-all duration-300 ease-in-out z-40",
         isCollapsed ? "w-20" : "w-64"
       )}
     >
@@ -52,7 +52,7 @@ export function Sidebar() {
             width={32}
             height={32}
             className="h-full w-full object-contain"
-            priority
+            unoptimized
           />
         </div>
         <div 

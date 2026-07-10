@@ -94,7 +94,33 @@ export default function TargetsPage() {
       </div>
 
       <div className="panel-surface rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="grid gap-3 p-4 md:hidden">
+          {data.targets.map((targetItem) => (
+            <div key={`${targetItem.job}-${targetItem.instance}`} className="rounded-lg border border-border bg-card p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-foreground">{targetItem.job}</p>
+                  <p className="font-mono text-xs text-muted-foreground break-all">{targetItem.instance}</p>
+                </div>
+                <StatusIndicator status={targetItem.up ? 'healthy' : 'critical'} text={targetItem.up ? 'UP' : 'DOWN'} />
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">Value</p>
+                  <p className="font-mono">{targetItem.value}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">Last Checked</p>
+                  <p className="font-mono">{format(new Date(targetItem.lastChecked), 'HH:mm:ss')}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+          {data.targets.length === 0 && (
+            <div className="px-4 py-8 text-center text-muted-foreground">No targets found.</div>
+          )}
+        </div>
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-muted/50 text-muted-foreground text-xs uppercase border-b border-border">
               <tr>

@@ -54,7 +54,7 @@ export function ServerCharts({ points }: Props) {
         {/* CPU & RAM */}
         <section className="panel-surface rounded-lg p-6">
           <h2 className="text-sm font-semibold text-slate-600 mb-4 uppercase tracking-wide">CPU & RAM (%)</h2>
-          <div className="h-[240px] w-full">
+          <div className="h-[220px] sm:h-[240px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={points} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
@@ -86,7 +86,7 @@ export function ServerCharts({ points }: Props) {
         {/* Load Average */}
         <section className="panel-surface rounded-lg p-6">
           <h2 className="text-sm font-semibold text-slate-600 mb-4 uppercase tracking-wide">Load Average (1m)</h2>
-          <div className="h-[240px] w-full">
+          <div className="h-[220px] sm:h-[240px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={points} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
@@ -114,7 +114,7 @@ export function ServerCharts({ points }: Props) {
           {hasDiskIO && (
             <section className="panel-surface rounded-lg p-6">
               <h2 className="text-sm font-semibold text-slate-600 mb-4 uppercase tracking-wide">Disk I/O Throughput (MB/s)</h2>
-              <div className="h-[240px] w-full">
+              <div className="h-[220px] sm:h-[240px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={points} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
@@ -144,7 +144,7 @@ export function ServerCharts({ points }: Props) {
           {hasNetwork && (
             <section className="panel-surface rounded-lg p-6">
               <h2 className="text-sm font-semibold text-slate-600 mb-4 uppercase tracking-wide">Network Throughput (MB/s)</h2>
-              <div className="h-[240px] w-full">
+              <div className="h-[220px] sm:h-[240px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={points} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />

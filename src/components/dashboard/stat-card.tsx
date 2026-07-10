@@ -27,15 +27,15 @@ export function StatCard({ title, value, description, icon: Icon, status = 'unkn
   };
 
   return (
-    <div className="panel-surface rounded-lg p-5 transition-colors hover:border-slate-300">
+    <div className="panel-surface rounded-lg p-4 sm:p-5 transition-colors hover:border-slate-300">
       <div className="flex items-start justify-between gap-4">
         <h3 className="text-sm font-semibold text-slate-500">{title}</h3>
         <div className={cn('p-2 rounded-md border transition-colors', statusBgColors[status])}>
           <Icon className={cn('h-4 w-4', statusColors[status])} />
         </div>
       </div>
-      <div className="mt-5 flex flex-col gap-1">
-        <span className="text-3xl font-semibold tracking-tight text-slate-950">{value}</span>
+      <div className="mt-4 sm:mt-5 flex flex-col gap-1">
+        <span className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-950 break-words">{value}</span>
         {description && <p className="text-xs text-muted-foreground font-medium">{description}</p>}
       </div>
     </div>

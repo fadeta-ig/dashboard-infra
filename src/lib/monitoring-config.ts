@@ -36,6 +36,17 @@ export interface AdditionalTargetConfig {
   purpose: string;
 }
 
+export interface ServiceProbeConfig {
+  key: string;
+  label: string;
+  type: 'dns' | 'http' | 'https' | 'tcp';
+  target: string;
+  purpose: string;
+  expectedStatus?: number;
+  expectedPort?: number;
+  enabled: boolean;
+}
+
 export const MIKROTIK_GATEWAY = '192.168.20.1';
 
 export const MIKROTIK_INTERFACES: MikrotikInterfaceConfig[] = [
@@ -244,6 +255,44 @@ export const ADDITIONAL_TARGET_SUGGESTIONS: AdditionalTargetConfig[] = [
     type: 'icmp',
     suggestedTarget: 'isi-ip-nvr-cctv',
     purpose: 'Validasi perangkat CCTV penting.',
+  },
+];
+
+export const SERVICE_PROBE_PLACEHOLDERS: ServiceProbeConfig[] = [
+  {
+    key: 'dns_local_gateway',
+    label: 'DNS Lokal Gateway',
+    type: 'dns',
+    target: MIKROTIK_GATEWAY,
+    purpose: 'Placeholder probe resolver DNS lokal.',
+    enabled: false,
+  },
+  {
+    key: 'https_domain_kantor',
+    label: 'Website / Domain Kantor',
+    type: 'https',
+    target: 'https://example.com',
+    purpose: 'Placeholder probe HTTPS layanan kantor.',
+    expectedStatus: 200,
+    enabled: false,
+  },
+  {
+    key: 'http_internal_app',
+    label: 'Aplikasi Internal HTTP',
+    type: 'http',
+    target: 'http://internal-app.local',
+    purpose: 'Placeholder probe HTTP aplikasi internal.',
+    expectedStatus: 200,
+    enabled: false,
+  },
+  {
+    key: 'tcp_pbx',
+    label: 'TCP PBX',
+    type: 'tcp',
+    target: '192.168.30.253',
+    purpose: 'Placeholder probe port TCP PBX penting.',
+    expectedPort: 5060,
+    enabled: false,
   },
 ];
 

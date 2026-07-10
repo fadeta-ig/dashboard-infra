@@ -152,7 +152,7 @@ export default function SummaryDashboard() {
               {isHealthy ? <CheckCircle2 className="h-6 w-6 text-emerald-500" /> : <XCircle className="h-6 w-6 text-red-500" />}
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-slate-100">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-slate-100">
               <StatsBlock label="Uptime" value={formatUptime(serverStats.uptimeSeconds)} />
               <StatsBlock label="Internet" value={data.network.internetStatus} capitalize />
               <StatsBlock label="Load (1m)" value={serverStats.load1?.toFixed(2) ?? 'N/A'} />
@@ -162,7 +162,7 @@ export default function SummaryDashboard() {
         </div>
 
         {/* Small Metrics */}
-        <div className="grid grid-cols-2 gap-4 lg:col-span-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:col-span-4">
           <FlatMetric title="CPU Usage" value={formatPercent(serverStats.cpuUsage)} icon={Cpu} />
           <FlatMetric title="RAM Usage" value={formatPercent(serverStats.ramUsage)} icon={MemoryStick} />
           <FlatMetric title="Swap Usage" value={serverStats.swapTotalGb === 0 ? '0%' : formatPercent(serverStats.swapUsagePercent)} icon={Database} />

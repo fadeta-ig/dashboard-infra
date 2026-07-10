@@ -13,7 +13,7 @@ const mobileLinks = [
 
 export function Topbar() {
   return (
-    <header className="md:hidden h-14 border-b border-slate-200 bg-white flex items-center px-4 fixed top-0 left-0 w-full z-50">
+    <header className="lg:hidden h-14 border-b border-slate-200 bg-white flex items-center px-4 fixed top-0 left-0 w-full z-50">
       <div className="flex items-center flex-1 min-w-0">
         <div className="mr-2 flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded border border-slate-200 bg-white">
           <Image
@@ -22,7 +22,7 @@ export function Topbar() {
             width={32}
             height={32}
             className="h-full w-full object-contain"
-            priority
+            unoptimized
           />
         </div>
         <span className="font-semibold text-sm text-slate-900 tracking-tight truncate">{BRANDING.shortName}</span>

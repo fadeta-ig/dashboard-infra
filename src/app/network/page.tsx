@@ -49,7 +49,7 @@ function TargetCard({ title, target, icon: Icon }: { title: string; target: Netw
       <h2 className="font-semibold text-sm text-slate-900">{title}</h2>
       <p className="text-xs font-mono text-slate-500 mt-1 mb-4">{target.target}</p>
 
-      <div className="grid grid-cols-2 gap-3 w-full">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
         <div className="flex flex-col items-center p-2.5 bg-slate-50 border border-slate-100 rounded">
           <span className="text-[10px] text-slate-500 mb-1 font-semibold uppercase tracking-wider">Status</span>
           <StatusIndicator status={target.up === null ? 'unknown' : target.up ? 'healthy' : 'critical'} text={target.up === null ? 'Unknown' : target.up ? 'UP' : 'DOWN'} />
@@ -240,7 +240,7 @@ export default function NetworkPage() {
           </div>
         </div>
 
-        <div className="h-[400px] w-full">
+        <div className="h-[280px] sm:h-[340px] lg:h-[400px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={points} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -278,7 +278,36 @@ export default function NetworkPage() {
         <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/50">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-900">Additional Ping Targets</h2>
         </div>
-        <div className="overflow-x-auto">
+        <div className="grid gap-3 p-4 md:hidden">
+          {data.additionalTargets.map((target) => {
+            const Icon = categoryIcon(target.category);
+            return (
+              <article key={target.target} className="rounded-lg border border-border bg-card p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded bg-slate-100 p-2 text-slate-700"><Icon className="h-4 w-4" /></div>
+                    <div>
+                      <p className="font-semibold text-slate-900">{target.label || target.target}</p>
+                      <p className="font-mono text-xs text-slate-500 break-all">{target.target}</p>
+                    </div>
+                  </div>
+                  <StatusIndicator status={target.up === null ? 'unknown' : target.up ? 'healthy' : 'critical'} text={target.up === null ? 'Unknown' : target.up ? 'UP' : 'DOWN'} />
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-xs uppercase text-slate-500">Category</p>
+                    <p className="text-slate-600">{categoryLabel(target.category)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-slate-500">Latency</p>
+                    <p className="font-mono font-medium text-slate-900">{latencyText(target)}</p>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
               <tr>

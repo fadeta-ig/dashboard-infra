@@ -76,7 +76,43 @@ export function ServerFilesystems({ filesystems }: Props) {
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="grid gap-3 p-4 md:hidden">
+        {filesystems.map((fs) => (
+          <article key={fs.mountpoint} className="rounded-lg border border-border bg-card p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-mono font-medium text-slate-800">{fs.mountpoint}</p>
+                <p className="font-mono text-xs text-slate-500 break-all">{fs.device}</p>
+                <p className="text-xs text-slate-400">{fs.fstype}</p>
+              </div>
+              {isPrometheusMount(fs.mountpoint) && (
+                <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded font-medium">
+                  Prometheus
+                </span>
+              )}
+            </div>
+            <div>
+              <p className="mb-1 text-xs uppercase text-muted-foreground">Disk Usage</p>
+              <UsageBar percent={fs.usagePercent} />
+              <p className="mt-2 text-xs text-slate-500">
+                {formatGb(fs.usedGb)} / {formatGb(fs.totalGb)}
+                {fs.availGb !== null ? ` • ${formatGb(fs.availGb)} free` : ''}
+              </p>
+            </div>
+            <div>
+              <p className="mb-1 text-xs uppercase text-muted-foreground">Inode Usage</p>
+              {fs.inodeUsagePercent !== null ? (
+                <UsageBar percent={fs.inodeUsagePercent} />
+              ) : (
+                <span className="text-xs text-slate-400">N/A (vfat)</span>
+              )}
+              <p className="mt-2 text-xs text-slate-500">Inodes free: {formatInodes(fs.inodesFree)}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm text-left">
           <thead className="bg-muted/50 text-muted-foreground text-xs uppercase border-b border-border">
             <tr>

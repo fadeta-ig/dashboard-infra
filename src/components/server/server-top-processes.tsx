@@ -97,7 +97,31 @@ export function ServerTopProcesses({ processes, available }: Props) {
       ) : processes.length === 0 ? (
         <div className="p-6 text-sm text-muted-foreground">Tidak ada data proses dari Prometheus.</div>
       ) : (
-        <div className="overflow-x-auto">
+        <>
+          <div className="grid gap-3 p-4 md:hidden">
+            {processes.map((proc) => (
+              <article key={proc.name} className="rounded-lg border border-border bg-card p-4 space-y-3">
+                <div>
+                  <p className="font-mono font-medium text-slate-800 break-all">{proc.name}</p>
+                </div>
+                <div>
+                  <p className="mb-1 text-xs uppercase text-muted-foreground">CPU Usage</p>
+                  <CpuBar percent={proc.cpuPercent} />
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Memory</p>
+                    <p className="font-mono text-slate-600">{formatBytes(proc.memoryBytes)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Procs</p>
+                    <p className="font-mono text-slate-500">{proc.numProcs ?? '—'}</p>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-muted/50 text-muted-foreground text-xs uppercase border-b border-border">
               <tr>
@@ -120,7 +144,8 @@ export function ServerTopProcesses({ processes, available }: Props) {
               ))}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       )}
     </section>
   );

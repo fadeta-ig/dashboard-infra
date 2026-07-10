@@ -72,7 +72,7 @@ export function ServerSnapshotGrid({ current }: Props) {
   return (
     <div className="space-y-4">
       {/* Row 1 — Memory & Core */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
         <StatCard
           title="CPU Usage"
           value={formatPercent(current?.cpuUsage ?? null)}
@@ -111,7 +111,7 @@ export function ServerSnapshotGrid({ current }: Props) {
       </div>
 
       {/* Row 2 — Load & I/O */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
         <StatCard
           title="Load Avg 1m"
           value={current?.load1 !== null && current?.load1 !== undefined ? current.load1.toFixed(2) : 'N/A'}
