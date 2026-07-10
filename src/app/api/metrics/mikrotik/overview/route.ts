@@ -2,6 +2,7 @@
 import { prometheusInstantQuery } from '@/lib/prometheus';
 import { metricMatchesTarget, NETWORK_TARGETS, nowIso, roundMetric, valueAt } from '@/lib/metrics';
 import { MIKROTIK_INTERFACES, type InterfaceRole } from '@/lib/monitoring-config';
+import { getMikrotikTemperatureSnapshot } from '@/lib/mikrotik-temperature';
 import { enforceMetricsRateLimit, noStoreJson } from '@/lib/rate-limit';
 import type { PrometheusData, PrometheusVectorResult } from '@/lib/types';
 
@@ -114,7 +115,7 @@ export async function GET(request: NextRequest) {
   const limited = enforceMetricsRateLimit(request);
   if (limited) return limited;
 
-  const [downloadData, uploadData, operStatusData, errorsData, discardsData, uptimeData, pingData, jitterData, lossData] = await Promise.all([
+  const [downloadData, uploadData, operStatusData, errorsData, discardsData, uptimeData, pingData, jitterData, lossData, temperature] = await Promise.all([
     prometheusInstantQuery(`rate(ifHCInOctets{${SNMP_INTERFACE_SELECTOR}}[5m]) * 8 / 1000000`),
     prometheusInstantQuery(`rate(ifHCOutOctets{${SNMP_INTERFACE_SELECTOR}}[5m]) * 8 / 1000000`),
     prometheusInstantQuery(`ifOperStatus{${SNMP_INTERFACE_SELECTOR}}`),
@@ -124,6 +125,7 @@ export async function GET(request: NextRequest) {
     prometheusInstantQuery('probe_duration_seconds{job="blackbox_icmp"} * 1000'),
     prometheusInstantQuery('stddev_over_time(probe_duration_seconds{job="blackbox_icmp"}[5m]) * 1000'),
     prometheusInstantQuery('(1 - avg_over_time(probe_success{job="blackbox_icmp"}[5m])) * 100'),
+    getMikrotikTemperatureSnapshot(),
   ]);
 
   const interfaces = buildConfiguredInterfaces(downloadData, uploadData, operStatusData, errorsData, discardsData);
@@ -161,6 +163,9 @@ export async function GET(request: NextRequest) {
     totalUploadUtilizationPercent: liveInterfaces.length > 0 ? utilization(totalUploadMbps, totalUploadCapacityMbps) : null,
     totalErrors5m: liveInterfaces.length > 0 ? totalErrors5m : null,
     totalDiscards5m: liveInterfaces.length > 0 ? totalDiscards5m : null,
+    temperatureCelsius: temperature.temperatureCelsius,
+    temperatureMetric: temperature.metricName,
+    temperatureAvailable: temperature.available,
     pingMs: roundMetric(findGatewayValue(pingData), 2),
     jitterMs: roundMetric(findGatewayValue(jitterData), 2),
     packetLossPercent: roundMetric(findGatewayValue(lossData), 2),

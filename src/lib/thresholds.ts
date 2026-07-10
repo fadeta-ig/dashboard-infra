@@ -25,6 +25,7 @@ export interface MonitoringThresholds {
   };
   mikrotik: {
     interfaceUtilizationPercent: ThresholdPair;
+    temperatureCelsius: ThresholdPair;
   };
 }
 
@@ -53,6 +54,7 @@ const DEFAULT_THRESHOLDS: MonitoringThresholds = {
   },
   mikrotik: {
     interfaceUtilizationPercent: { warning: 80, critical: 95 },
+    temperatureCelsius: { warning: 70, critical: 85 },
   },
 };
 
@@ -92,6 +94,7 @@ export function getMonitoringThresholds(): MonitoringThresholds {
     },
     mikrotik: {
       interfaceUtilizationPercent: thresholdFromEnv('THRESHOLD_MIKROTIK_INTERFACE_UTILIZATION_PERCENT', DEFAULT_THRESHOLDS.mikrotik.interfaceUtilizationPercent),
+      temperatureCelsius: thresholdFromEnv('THRESHOLD_MIKROTIK_TEMPERATURE_CELSIUS', DEFAULT_THRESHOLDS.mikrotik.temperatureCelsius),
     },
   };
 }

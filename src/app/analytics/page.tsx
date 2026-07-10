@@ -39,7 +39,7 @@ const CAPACITY_METRICS = [
   { key: 'server_cpu_percent', title: 'CPU Daily Trend', unit: '%' },
   { key: 'server_ram_percent', title: 'RAM Daily Trend', unit: '%' },
   { key: 'server_disk_root_percent', title: 'Disk Root Daily Trend', unit: '%' },
-  { key: 'server_temperature_celsius', title: 'Temperature Daily Trend', unit: '°C' },
+  { key: 'mikrotik_temperature_celsius', title: 'MikroTik Temperature Daily Trend', unit: '°C' },
 ] as const;
 
 export default function AnalyticsPage() {
@@ -200,7 +200,7 @@ export default function AnalyticsPage() {
         {CAPACITY_METRICS.map((metric) => (
           <section key={metric.key} className="panel-surface rounded-lg p-5">
             <div className="mb-4 flex items-center gap-3">
-              {metric.key === 'server_temperature_celsius' ? (
+              {metric.key === 'mikrotik_temperature_celsius' ? (
                 <Thermometer className="h-4 w-4 text-red-500" />
               ) : metric.key === 'server_cpu_percent' ? (
                 <Activity className="h-4 w-4 text-emerald-500" />

@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, ArrowDownToLine, ArrowUpFromLine, Gauge, RadioTower, RouterIcon, Search, Timer, TriangleAlert } from 'lucide-react';
+import { AlertCircle, ArrowDownToLine, ArrowUpFromLine, Gauge, RadioTower, RouterIcon, Search, Thermometer, Timer, TriangleAlert } from 'lucide-react';
 import { StatCard } from '@/components/dashboard/stat-card';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';
 import type { MikrotikDiscoveryResponse } from '@/lib/types';
@@ -39,6 +39,9 @@ interface MikrotikOverview {
   totalUploadUtilizationPercent: number | null;
   totalErrors5m: number | null;
   totalDiscards5m: number | null;
+  temperatureCelsius: number | null;
+  temperatureMetric: string | null;
+  temperatureAvailable: boolean;
   pingMs: number | null;
   jitterMs: number | null;
   packetLossPercent: number | null;
@@ -195,14 +198,29 @@ export default function MikrotikPage() {
       )}
 
       {loadingOverview ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-4">
-          {[1, 2, 3, 4, 5, 6, 7].map((item) => <div key={item} className="h-32 bg-muted animate-pulse rounded-lg border border-border" />)}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-8 gap-4">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((item) => <div key={item} className="h-32 bg-muted animate-pulse rounded-lg border border-border" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-8 gap-4">
           <StatCard title="WAN Download" value={metricValue(overview?.totalDownloadMbps ?? null, 'Mbps')} description={overview ? `Capacity ${overview.totalDownloadCapacityMbps} Mbps / ${utilizationText(overview.totalDownloadUtilizationPercent)}` : undefined} icon={ArrowDownToLine} status={overview?.totalDownloadMbps === null ? 'unknown' : 'healthy'} />
           <StatCard title="WAN Upload" value={metricValue(overview?.totalUploadMbps ?? null, 'Mbps')} description={overview ? `Capacity ${overview.totalUploadCapacityMbps} Mbps / ${utilizationText(overview.totalUploadUtilizationPercent)}` : undefined} icon={ArrowUpFromLine} status={overview?.totalUploadMbps === null ? 'unknown' : 'healthy'} />
           <StatCard title="Router Uptime" value={formatDuration(overview?.routerUptimeSeconds ?? null)} icon={Timer} status={overview?.routerUptimeSeconds === null ? 'unknown' : 'healthy'} />
+          <StatCard
+            title="Router Temperature"
+            value={overview?.temperatureCelsius === null || overview?.temperatureCelsius === undefined ? 'Not available' : `${overview.temperatureCelsius.toFixed(1)} °C`}
+            description={overview?.temperatureMetric || 'SNMP temperature metric not found'}
+            icon={Thermometer}
+            status={
+              overview?.temperatureCelsius === null || overview?.temperatureCelsius === undefined
+                ? 'unknown'
+                : overview.temperatureCelsius >= 85
+                  ? 'critical'
+                  : overview.temperatureCelsius >= 70
+                    ? 'warning'
+                    : 'healthy'
+            }
+          />
           <StatCard title="Ping Gateway" value={metricValue(overview?.pingMs ?? null, 'ms')} icon={RouterIcon} status={latencyStatus(overview?.pingMs ?? null, 20, 80)} />
           <StatCard title="Jitter 5m" value={metricValue(overview?.jitterMs ?? null, 'ms')} icon={Gauge} status={latencyStatus(overview?.jitterMs ?? null, 5, 20)} />
           <StatCard title="Errors 5m" value={countValue(overview?.totalErrors5m ?? null)} icon={TriangleAlert} status={(overview?.totalErrors5m ?? null) === null ? 'unknown' : (overview?.totalErrors5m || 0) > 0 ? 'warning' : 'healthy'} />

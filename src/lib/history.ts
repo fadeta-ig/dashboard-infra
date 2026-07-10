@@ -1,6 +1,7 @@
 import type { RowDataPacket } from 'mysql2/promise';
 import { executeStatement, getDatabaseUnavailableReason, getPool, isDatabaseConfigured, queryRows } from '@/lib/db';
 import { buildNetworkMetrics, buildServerMetrics, buildTargets, nowIso, PROMQL } from '@/lib/metrics';
+import { getMikrotikTemperatureRange, getMikrotikTemperatureSnapshot } from '@/lib/mikrotik-temperature';
 import { prometheusInstantQuery, prometheusRangeQuery } from '@/lib/prometheus';
 import { getReadinessSnapshot } from '@/lib/readiness';
 import { getServiceHealthSnapshot } from '@/lib/service-health';
@@ -322,6 +323,7 @@ async function collectCurrentState() {
     rebootData,
     hwmonTemperatureData,
     thermalZoneTemperatureData,
+    mikrotikTemperature,
     serviceSnapshot,
     readinessSnapshot,
   ] = await Promise.all([
@@ -347,6 +349,7 @@ async function collectCurrentState() {
     prometheusInstantQuery(PROMQL.rebootRequired),
     prometheusInstantQuery(PROMQL.hwmonTemperature),
     prometheusInstantQuery(PROMQL.thermalZoneTemperature),
+    getMikrotikTemperatureSnapshot(),
     getServiceHealthSnapshot(),
     getReadinessSnapshot(),
   ]);
@@ -355,6 +358,7 @@ async function collectCurrentState() {
     timestamp: nowIso(),
     targets: buildTargets(targetsData, nowIso()),
     network: buildNetworkMetrics(pingStatusData, pingLatencyData, nowIso()),
+    mikrotikTemperature,
     server: buildServerMetrics(
       cpuData,
       ramUsageData,
@@ -404,11 +408,6 @@ function buildHealthScores(snapshot: Awaited<ReturnType<typeof collectCurrentSta
   const serverPenalty =
     (snapshot.server.status === 'critical' ? 35 : snapshot.server.status === 'warning' ? 15 : 0) +
     (snapshot.server.rebootRequired ? 10 : 0) +
-    (snapshot.server.temperatureCelsius !== null && snapshot.server.temperatureCelsius >= thresholds.server.temperatureCelsius.critical
-      ? 20
-      : snapshot.server.temperatureCelsius !== null && snapshot.server.temperatureCelsius >= thresholds.server.temperatureCelsius.warning
-        ? 10
-        : 0) +
     snapshot.services.services.filter((service) => service.required && service.active === false).length * 20 +
     snapshot.services.missingRequired.length * 10;
   scores.push({
@@ -417,7 +416,6 @@ function buildHealthScores(snapshot: Awaited<ReturnType<typeof collectCurrentSta
     payload: {
       status: snapshot.server.status,
       rebootRequired: snapshot.server.rebootRequired,
-      temperatureCelsius: snapshot.server.temperatureCelsius,
       missingRequiredServices: snapshot.services.missingRequired,
     },
   });
@@ -473,15 +471,23 @@ function buildHealthScores(snapshot: Awaited<ReturnType<typeof collectCurrentSta
 
   const mikrotikTargets = snapshot.targets.filter((target) => /mikrotik|snmp/i.test(target.job));
   const mikrotikDownTargets = mikrotikTargets.filter((target) => !target.up).length;
+  const mikrotikTemperaturePenalty =
+    snapshot.mikrotikTemperature.temperatureCelsius !== null && snapshot.mikrotikTemperature.temperatureCelsius >= thresholds.mikrotik.temperatureCelsius.critical
+      ? 20
+      : snapshot.mikrotikTemperature.temperatureCelsius !== null && snapshot.mikrotikTemperature.temperatureCelsius >= thresholds.mikrotik.temperatureCelsius.warning
+        ? 10
+        : 0;
   const mikrotikScore = mikrotikTargets.length === 0
-    ? 75
-    : clampScore(100 - Math.min(mikrotikDownTargets * 25, 75));
+    ? clampScore(75 - mikrotikTemperaturePenalty)
+    : clampScore(100 - Math.min(mikrotikDownTargets * 25, 75) - mikrotikTemperaturePenalty);
   scores.push({
     domainKey: 'mikrotik',
     score: mikrotikScore,
     payload: {
       totalTargets: mikrotikTargets.length,
       downTargets: mikrotikDownTargets,
+      temperatureCelsius: snapshot.mikrotikTemperature.temperatureCelsius,
+      temperatureMetric: snapshot.mikrotikTemperature.metricName,
     },
   });
 
@@ -532,6 +538,7 @@ async function updateCapacitySnapshots(snapshot: Awaited<ReturnType<typeof colle
     netRxRange,
     netTxRange,
     tempRange,
+    mikrotikTempRange,
   ] = await Promise.all([
     prometheusRangeQuery(PROMQL.cpuUsage, start, end, step),
     prometheusRangeQuery(PROMQL.ramUsage, start, end, step),
@@ -539,6 +546,7 @@ async function updateCapacitySnapshots(snapshot: Awaited<ReturnType<typeof colle
     prometheusRangeQuery(PROMQL.netRxBytesPerSec, start, end, step),
     prometheusRangeQuery(PROMQL.netTxBytesPerSec, start, end, step),
     prometheusRangeQuery(PROMQL.hwmonTemperature, start, end, step),
+    getMikrotikTemperatureRange(start, end, step),
   ]);
 
   await Promise.all([
@@ -547,7 +555,8 @@ async function updateCapacitySnapshots(snapshot: Awaited<ReturnType<typeof colle
     upsertCapacityDaily(snapshotDate, 'server_disk_root_percent', extractMatrixValues(diskRange), { unit: 'percent' }),
     upsertCapacityDaily(snapshotDate, 'server_net_rx_bytes_per_sec', extractMatrixValues(netRxRange), { unit: 'bytes_per_sec' }),
     upsertCapacityDaily(snapshotDate, 'server_net_tx_bytes_per_sec', extractMatrixValues(netTxRange), { unit: 'bytes_per_sec' }),
-    upsertCapacityDaily(snapshotDate, 'server_temperature_celsius', extractMatrixValues(tempRange), { unit: 'celsius' }),
+    upsertCapacityDaily(snapshotDate, 'server_temperature_celsius', extractMatrixValues(tempRange), { unit: 'celsius', note: 'VM sensor may be unavailable' }),
+    upsertCapacityDaily(snapshotDate, 'mikrotik_temperature_celsius', mikrotikTempRange.values, { unit: 'celsius', metric: mikrotikTempRange.metricName }),
   ]);
 }
 

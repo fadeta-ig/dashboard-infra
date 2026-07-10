@@ -150,7 +150,7 @@ export default function ServerPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-primary">Server Ubuntu</h1>
           <p className="mt-1 text-sm font-medium text-muted-foreground">
-            Full observability: CPU, RAM, swap, disk I/O, network, uptime, temperature, dan service health untuk server-wig
+            Full observability: CPU, RAM, swap, disk I/O, network, uptime, dan service health untuk server-wig
           </p>
         </div>
         <div className="flex gap-2 rounded-md border border-border bg-card p-1">
@@ -183,8 +183,8 @@ export default function ServerPage() {
         </div>
       ) : loading ? (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
-            {Array.from({ length: 12 }).map((_, index) => (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
+            {Array.from({ length: 10 }).map((_, index) => (
               <div key={index} className="h-28 animate-pulse rounded-lg border border-border bg-muted" />
             ))}
           </div>
@@ -201,35 +201,6 @@ export default function ServerPage() {
 
           {detail && detail.cpuCores.length > 0 && <ServerCpuCores cores={detail.cpuCores} />}
           {detail && <ServerFilesystems filesystems={detail.filesystems} />}
-
-          {detail?.temperatureAvailable && (
-            <section className="panel-surface overflow-hidden rounded-lg">
-              <div className="border-b border-border bg-white/60 px-6 py-4">
-                <h2 className="font-semibold">Temperature Sensors</h2>
-                <p className="mt-1 text-xs text-muted-foreground">Sensor suhu dari Node Exporter hwmon atau thermal zone.</p>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="border-b border-border bg-muted/50 text-xs uppercase text-muted-foreground">
-                    <tr>
-                      <th className="px-6 py-4 font-medium">Sensor</th>
-                      <th className="px-6 py-4 font-medium">Chip / Zone</th>
-                      <th className="px-6 py-4 font-medium">Temperature</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {detail.temperatureSensors.map((sensor) => (
-                      <tr key={`${sensor.sensor}-${sensor.chip || 'none'}`} className="transition-colors hover:bg-muted/50">
-                        <td className="px-6 py-4 font-medium">{sensor.label || sensor.sensor}</td>
-                        <td className="px-6 py-4 text-muted-foreground">{sensor.chip || '-'}</td>
-                        <td className="px-6 py-4 font-mono">{sensor.temperatureCelsius === null ? 'N/A' : `${sensor.temperatureCelsius.toFixed(1)} °C`}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
 
           <ServerTopProcesses
             processes={detail?.topProcesses ?? []}
