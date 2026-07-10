@@ -305,7 +305,7 @@ export default function MikrotikPage() {
         </div>
       )}
 
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.3fr_0.7fr]">
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="panel-surface rounded-lg p-5">
           <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
             <div>
@@ -410,7 +410,7 @@ export default function MikrotikPage() {
           )}
         </div>
 
-        <div className="space-y-6">
+        <div>
           <aside className="panel-surface rounded-lg p-5">
             <div className="flex items-center gap-3">
               <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-slate-700"><Waves className="h-4 w-4" /></div>
@@ -424,27 +424,6 @@ export default function MikrotikPage() {
               <QuickRow label="Packet loss" value={metricValue(overview?.packetLossPercent ?? null, '%')} />
               <QuickRow label="Sumber suhu" value={overview?.temperatureMetric || 'Belum ada metric'} />
               <QuickRow label="Pembaruan" value={formatUpdatedTime(overview?.timestamp)} />
-            </div>
-          </aside>
-
-          <aside className="panel-surface rounded-lg p-5">
-            <h2 className="font-semibold text-slate-900">Interface Prioritas</h2>
-            <div className="mt-4 space-y-3">
-              {interfaceGroups.focus.slice(0, 5).map((item) => (
-                <div key={item.name} className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-mono text-sm font-medium text-slate-900">{item.name}</p>
-                      <p className="mt-1 text-xs text-slate-500">{item.displayName}</p>
-                    </div>
-                    <StatusIndicator status={portStatus(item)} text={portStatusText(item)} />
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
-                    <span>DL {metricValue(item.downloadMbps, 'Mbps')}</span>
-                    <span>UL {metricValue(item.uploadMbps, 'Mbps')}</span>
-                  </div>
-                </div>
-              ))}
             </div>
           </aside>
         </div>

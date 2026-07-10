@@ -2,9 +2,9 @@ import { roundMetric } from '@/lib/metrics';
 import { prometheusInstantQuery, prometheusRangeQuery, prometheusSeriesQuery } from '@/lib/prometheus';
 
 const MIKROTIK_INSTANCE = '192.168.20.1';
-const JOB_MATCHER = 'job=~"snmp_system|snmp_if_mib|snmp_switch_ports"';
-const BASE_MATCHER = `${JOB_MATCHER},instance="${MIKROTIK_INSTANCE}"`;
+const BASE_MATCHER = `instance="${MIKROTIK_INSTANCE}"`;
 const PREFERRED_METRICS = [
+  'mikrotik_temperature_celsius',
   'mtxrHlTemperature',
   'mtxrHlTemp',
   'mtxrSystemTemperature',
