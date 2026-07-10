@@ -1,11 +1,26 @@
-﻿'use client';
+'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, ArrowDownToLine, ArrowUpFromLine, Gauge, RadioTower, RouterIcon, Search, Thermometer, Timer, TriangleAlert } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  AlertCircle,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Gauge,
+  type LucideIcon,
+  RadioTower,
+  RouterIcon,
+  Search,
+  ShieldAlert,
+  Thermometer,
+  Timer,
+  TriangleAlert,
+  Waves,
+} from 'lucide-react';
 import { StatCard } from '@/components/dashboard/stat-card';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';
 import type { MikrotikDiscoveryResponse } from '@/lib/types';
 import { getErrorMessage } from '@/lib/metrics';
+import { cn } from '@/lib/utils';
 
 interface InterfaceTraffic {
   name: string;
@@ -53,7 +68,7 @@ interface MikrotikOverview {
 }
 
 function formatDuration(seconds: number | null) {
-  if (seconds === null) return 'Not available';
+  if (seconds === null) return 'Belum tersedia';
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -63,8 +78,9 @@ function formatDuration(seconds: number | null) {
 }
 
 function countValue(value: number | null) {
-  return value === null ? 'Not available' : value.toFixed(0);
+  return value === null ? 'Belum ada' : value.toFixed(0);
 }
+
 function labelPreview(labels: Record<string, string>) {
   const entries = Object.entries(labels).slice(0, 4);
   if (entries.length === 0) return '-';
@@ -72,11 +88,24 @@ function labelPreview(labels: Record<string, string>) {
 }
 
 function metricValue(value: number | null, suffix: string) {
-  return value === null ? 'Not available' : `${value.toFixed(2)} ${suffix}`;
+  return value === null ? 'Belum tersedia' : `${value.toFixed(2)} ${suffix}`;
+}
+
+function compactMetricValue(value: number | null, suffix: string) {
+  return value === null ? 'N/A' : `${value.toFixed(1)} ${suffix}`;
 }
 
 function utilizationText(value: number | null) {
-  return value === null ? 'Not available' : `${value.toFixed(1)}%`;
+  return value === null ? 'Belum tersedia' : `${value.toFixed(1)}%`;
+}
+
+function formatUpdatedTime(timestamp: string | null | undefined) {
+  if (!timestamp) return 'Belum tersedia';
+  return new Date(timestamp).toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
 }
 
 function roleBadge(role: string) {
@@ -90,6 +119,14 @@ function roleBadge(role: string) {
     unused: 'UNUSED',
   };
   return labels[role] || role.toUpperCase();
+}
+
+function roleTone(role: string) {
+  if (role === 'wan') return 'bg-sky-50 text-sky-700 border-sky-100';
+  if (role === 'trunk') return 'bg-violet-50 text-violet-700 border-violet-100';
+  if (role === 'vlan') return 'bg-amber-50 text-amber-700 border-amber-100';
+  if (role === 'vpn') return 'bg-emerald-50 text-emerald-700 border-emerald-100';
+  return 'bg-slate-50 text-slate-600 border-slate-100';
 }
 
 function latencyStatus(value: number | null, warning: number, critical: number): 'healthy' | 'warning' | 'critical' | 'unknown' {
@@ -168,48 +205,90 @@ export default function MikrotikPage() {
     }
   };
 
+  const interfaceGroups = useMemo(() => {
+    const interfaces = overview?.interfaces || [];
+    return {
+      focus: interfaces.filter((item) => ['wan', 'trunk', 'vpn'].includes(item.role)),
+      access: interfaces.filter((item) => ['vlan', 'lan'].includes(item.role)),
+      passive: interfaces.filter((item) => ['unused', 'loopback'].includes(item.role)),
+    };
+  }, [overview?.interfaces]);
+
+  const issueCount = useMemo(() => {
+    if (!overview) return 0;
+    return overview.interfaces.filter((item) => portStatus(item) === 'critical' || (item.errors5m || 0) > 0 || (item.discards5m || 0) > 0).length;
+  }, [overview]);
+
   return (
     <div className="space-y-6 animate-fade-in animate-slide-up">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">MikroTik gateway 192.168.20.1</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-primary">MikroTik Monitoring</h1>
-          <p className="text-sm text-muted-foreground mt-1 font-medium">Interface mapping, ISP capacity, upload/download, ping, jitter, packet loss, dan discovery metric SNMP.</p>
+      <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-[linear-gradient(135deg,#f8fafc_0%,#eef6ff_45%,#f9fcff_100%)] px-6 py-7 shadow-[0_20px_60px_rgba(15,23,42,0.06)] sm:px-8">
+        <div className="absolute -right-20 top-0 h-56 w-56 rounded-full bg-sky-200/30 blur-3xl" />
+        <div className="absolute left-1/3 top-10 h-40 w-40 rounded-full bg-emerald-200/20 blur-3xl" />
+        <div className="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">MikroTik Gateway {overview?.gateway || '192.168.20.1'}</p>
+            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">MikroTik Gateway Overview</h1>
+            <p className="mt-4 max-w-2xl text-sm font-medium leading-7 text-slate-600 sm:text-base">
+              Ringkasan uplink, suhu router, kualitas koneksi, dan status port dalam tampilan yang lebih rapi untuk monitoring operasional harian.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <InfoChip icon={RouterIcon} label={`${overview?.configuredInterfaceCount || 0} interface terkonfigurasi`} />
+              <InfoChip icon={ShieldAlert} label={`${issueCount} interface perlu perhatian`} />
+              <InfoChip icon={Thermometer} label={overview?.temperatureAvailable ? `Router ${overview.temperatureCelsius?.toFixed(1)} \u00B0C` : 'Metric suhu belum tersedia'} />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:min-w-[520px]">
+            <SummaryTile
+              title="Download / Upload"
+              value={overview ? `${compactMetricValue(overview.totalDownloadMbps, 'Mbps')} / ${compactMetricValue(overview.totalUploadMbps, 'Mbps')}` : 'Memuat'}
+              note={overview ? `Utilisasi puncak ${utilizationText(Math.max(overview.totalDownloadUtilizationPercent || 0, overview.totalUploadUtilizationPercent || 0))}` : 'Menunggu data'}
+            />
+            <SummaryTile
+              title="Ping / Jitter"
+              value={overview ? `${compactMetricValue(overview.pingMs, 'ms')} / ${compactMetricValue(overview.jitterMs, 'ms')}` : 'Memuat'}
+              note="Kualitas koneksi gateway"
+            />
+            <button
+              type="button"
+              onClick={() => void handleDiscovery()}
+              disabled={loadingDiscovery}
+              className="group rounded-2xl border border-slate-900 bg-slate-950 px-4 py-4 text-left text-white transition-colors hover:bg-slate-800 disabled:opacity-60"
+            >
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                {loadingDiscovery ? <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" /> : <Search className="h-4 w-4" />}
+                Discovery
+              </div>
+              <p className="mt-2 text-xs leading-5 text-slate-300">
+                Pindai metric SNMP suhu, sistem, dan interface yang sudah masuk ke Prometheus.
+              </p>
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={() => void handleDiscovery()}
-          disabled={loadingDiscovery}
-          className="flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-slate-800 disabled:opacity-50"
-        >
-          {loadingDiscovery ? <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" /> : <Search className="h-4 w-4" />}
-          Discovery
-        </button>
-      </div>
+      </section>
 
       {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-5 flex items-start gap-4">
-          <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+        <div className="flex items-start gap-4 rounded-2xl border border-destructive/40 bg-destructive/10 p-5">
+          <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-destructive" />
           <div>
-            <h2 className="font-semibold text-destructive">MikroTik Data Warning</h2>
-            <p className="text-sm text-muted-foreground mt-1">{error}</p>
+            <h2 className="font-semibold text-destructive">Peringatan Data MikroTik</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{error}</p>
           </div>
         </div>
       )}
 
       {loadingOverview ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-8 gap-4">
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((item) => <div key={item} className="h-32 bg-muted animate-pulse rounded-lg border border-border" />)}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-8">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((item) => <div key={item} className="h-32 animate-pulse rounded-lg border border-border bg-muted" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-8 gap-4">
-          <StatCard title="WAN Download" value={metricValue(overview?.totalDownloadMbps ?? null, 'Mbps')} description={overview ? `Capacity ${overview.totalDownloadCapacityMbps} Mbps / ${utilizationText(overview.totalDownloadUtilizationPercent)}` : undefined} icon={ArrowDownToLine} status={overview?.totalDownloadMbps === null ? 'unknown' : 'healthy'} />
-          <StatCard title="WAN Upload" value={metricValue(overview?.totalUploadMbps ?? null, 'Mbps')} description={overview ? `Capacity ${overview.totalUploadCapacityMbps} Mbps / ${utilizationText(overview.totalUploadUtilizationPercent)}` : undefined} icon={ArrowUpFromLine} status={overview?.totalUploadMbps === null ? 'unknown' : 'healthy'} />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+          <StatCard title="WAN Download" value={metricValue(overview?.totalDownloadMbps ?? null, 'Mbps')} description={overview ? `Kapasitas ${overview.totalDownloadCapacityMbps} Mbps / ${utilizationText(overview.totalDownloadUtilizationPercent)}` : undefined} icon={ArrowDownToLine} status={overview?.totalDownloadMbps === null ? 'unknown' : 'healthy'} />
+          <StatCard title="WAN Upload" value={metricValue(overview?.totalUploadMbps ?? null, 'Mbps')} description={overview ? `Kapasitas ${overview.totalUploadCapacityMbps} Mbps / ${utilizationText(overview.totalUploadUtilizationPercent)}` : undefined} icon={ArrowUpFromLine} status={overview?.totalUploadMbps === null ? 'unknown' : 'healthy'} />
           <StatCard title="Router Uptime" value={formatDuration(overview?.routerUptimeSeconds ?? null)} icon={Timer} status={overview?.routerUptimeSeconds === null ? 'unknown' : 'healthy'} />
           <StatCard
             title="Router Temperature"
-            value={overview?.temperatureCelsius === null || overview?.temperatureCelsius === undefined ? 'Not available' : `${overview.temperatureCelsius.toFixed(1)} °C`}
-            description={overview?.temperatureMetric || 'SNMP temperature metric not found'}
+            value={overview?.temperatureCelsius === null || overview?.temperatureCelsius === undefined ? 'Belum tersedia' : `${overview.temperatureCelsius.toFixed(1)} \u00B0C`}
+            description={overview?.temperatureMetric || 'Metric suhu SNMP belum ditemukan'}
             icon={Thermometer}
             status={
               overview?.temperatureCelsius === null || overview?.temperatureCelsius === undefined
@@ -228,105 +307,163 @@ export default function MikrotikPage() {
         </div>
       )}
 
-      <section className="panel-surface rounded-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-border bg-white/60">
-          <h2 className="font-semibold">Configured MikroTik Interfaces</h2>
-          <p className="text-xs text-muted-foreground mt-1">
-            Configured {overview?.configuredInterfaceCount || 0} interfaces / live metrics {overview?.liveInterfaceMetricCount || 0}. Missing: {(overview?.missingRequiredMetrics || []).join(', ') || 'none'}.
-          </p>
-        </div>
-        <div className="grid gap-3 p-4 md:hidden">
-          {(overview?.interfaces || []).map((item) => (
-            <article key={`${item.instance}-${item.name}`} className="rounded-lg border border-border bg-card p-4 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-mono font-medium break-all">{item.name}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{item.displayName}{item.comment ? ` / ${item.comment}` : ''}</p>
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.3fr_0.7fr]">
+        <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_16px_48px_rgba(15,23,42,0.05)]">
+          <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-950">Interface MikroTik Terkonfigurasi</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {overview?.configuredInterfaceCount || 0} interface terkonfigurasi / {overview?.liveInterfaceMetricCount || 0} interface dengan metric aktif.
+              </p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 px-3 py-2 text-right">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Metric Belum Lengkap</p>
+              <p className="mt-1 text-sm font-medium text-slate-700">{(overview?.missingRequiredMetrics || []).join(', ') || 'Tidak ada'}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-3 p-4 md:hidden">
+            {interfaceGroups.focus.concat(interfaceGroups.access).map((item) => (
+              <article key={`${item.instance}-${item.name}`} className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="break-all font-mono font-medium text-slate-950">{item.name}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{item.displayName}{item.comment ? ` / ${item.comment}` : ''}</p>
+                  </div>
+                  <StatusIndicator status={portStatus(item)} text={portStatusText(item)} />
                 </div>
-                <StatusIndicator status={portStatus(item)} text={portStatusText(item)} />
-              </div>
-              <div className="text-xs text-muted-foreground">{roleBadge(item.role)}{item.isp ? ` / ${item.isp}` : ''}{item.role === 'wan' ? item.includeInWanTotal ? ' / total source' : ' / physical only' : ''}</div>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p className="text-xs uppercase text-muted-foreground">Download</p>
-                  <p className="font-mono">{metricValue(item.downloadMbps, 'Mbps')}</p>
+                <div className="flex flex-wrap gap-2">
+                  <span className={cn('rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase', roleTone(item.role))}>{roleBadge(item.role)}</span>
+                  {item.isp && <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">{item.isp}</span>}
                 </div>
-                <div>
-                  <p className="text-xs uppercase text-muted-foreground">Upload</p>
-                  <p className="font-mono">{metricValue(item.uploadMbps, 'Mbps')}</p>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Download</p>
+                    <p className="font-mono">{metricValue(item.downloadMbps, 'Mbps')}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Upload</p>
+                    <p className="font-mono">{metricValue(item.uploadMbps, 'Mbps')}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Utilization</p>
+                    <p className="font-mono">{utilizationText(maxUtilization(item))}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Err / Drop 5m</p>
+                    <p className="font-mono">{countValue(item.errors5m)} / {countValue(item.discards5m)}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs uppercase text-muted-foreground">Utilization</p>
-                  <p className="font-mono">{utilizationText(maxUtilization(item))}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase text-muted-foreground">Err / Drop 5m</p>
-                  <p className="font-mono">{countValue(item.errors5m)} / {countValue(item.discards5m)}</p>
-                </div>
-              </div>
-            </article>
-          ))}
-          {(overview?.interfaces || []).length === 0 && (
-            <div className="px-6 py-8 text-center text-muted-foreground">Belum ada mapping interface.</div>
+              </article>
+            ))}
+            {(overview?.interfaces || []).length === 0 && (
+              <div className="px-6 py-8 text-center text-muted-foreground">Belum ada mapping interface.</div>
+            )}
+          </div>
+
+          <div className="hidden overflow-x-auto pt-4 md:block">
+            <table className="w-full min-w-[980px] text-left text-sm">
+              <thead className="border-b border-slate-100 text-xs uppercase tracking-[0.16em] text-slate-400">
+                <tr>
+                  <th className="px-6 py-4 font-medium">Interface</th>
+                  <th className="px-6 py-4 font-medium">Role</th>
+                  <th className="px-6 py-4 font-medium">Port</th>
+                  <th className="px-6 py-4 text-right font-medium">Download</th>
+                  <th className="px-6 py-4 text-right font-medium">Upload</th>
+                  <th className="px-6 py-4 text-right font-medium">Utilization</th>
+                  <th className="px-6 py-4 text-right font-medium">Err/Drop 5m</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {(overview?.interfaces || []).map((item) => (
+                  <tr key={`${item.instance}-${item.name}`} className="transition-colors hover:bg-slate-50/80">
+                    <td className="px-6 py-4">
+                      <div className="font-mono font-medium text-slate-950">{item.name}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{item.displayName}{item.comment ? ` / ${item.comment}` : ''}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-2">
+                        <span className={cn('rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase', roleTone(item.role))}>{roleBadge(item.role)}</span>
+                        {item.isp && <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">{item.isp}</span>}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4"><StatusIndicator status={portStatus(item)} text={portStatusText(item)} /></td>
+                    <td className="px-6 py-4 text-right font-mono">{metricValue(item.downloadMbps, 'Mbps')}</td>
+                    <td className="px-6 py-4 text-right font-mono">{metricValue(item.uploadMbps, 'Mbps')}</td>
+                    <td className="px-6 py-4 text-right font-mono">{utilizationText(maxUtilization(item))}</td>
+                    <td className="px-6 py-4 text-right font-mono">{countValue(item.errors5m)} / {countValue(item.discards5m)}</td>
+                  </tr>
+                ))}
+                {(overview?.interfaces || []).length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
+                      Belum ada mapping interface.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {(overview?.missingRequiredMetrics || []).length > 0 && (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              SNMP scrape sudah terlihat, tetapi beberapa metric MikroTik belum lengkap. Pastikan modul SNMP mengeluarkan counter IF-MIB, status port, dan `sysUpTime`.
+            </div>
           )}
         </div>
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-muted/50 text-muted-foreground text-xs uppercase border-b border-border">
-              <tr>
-                <th className="px-6 py-4 font-medium">Interface</th>
-                <th className="px-6 py-4 font-medium">Role</th>
-                <th className="px-6 py-4 font-medium">Port</th>
-                <th className="px-6 py-4 font-medium text-right">Download</th>
-                <th className="px-6 py-4 font-medium text-right">Upload</th>
-                <th className="px-6 py-4 font-medium text-right">Utilization</th>
-                <th className="px-6 py-4 font-medium text-right">Err/Drop 5m</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {(overview?.interfaces || []).map((item) => (
-                <tr key={`${item.instance}-${item.name}`} className="hover:bg-muted/50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="font-mono font-medium">{item.name}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">{item.displayName}{item.comment ? ` / ${item.comment}` : ''}</div>
-                  </td>
-                  <td className="px-6 py-4 text-muted-foreground">{roleBadge(item.role)}{item.isp ? ` / ${item.isp}` : ''}{item.role === 'wan' ? item.includeInWanTotal ? ' / total source' : ' / physical only' : ''}</td>
-                  <td className="px-6 py-4"><StatusIndicator status={portStatus(item)} text={portStatusText(item)} /></td>
-                  <td className="px-6 py-4 text-right font-mono">{metricValue(item.downloadMbps, 'Mbps')}</td>
-                  <td className="px-6 py-4 text-right font-mono">{metricValue(item.uploadMbps, 'Mbps')}</td>
-                  <td className="px-6 py-4 text-right font-mono">{utilizationText(maxUtilization(item))}</td>
-                  <td className="px-6 py-4 text-right font-mono">{countValue(item.errors5m)} / {countValue(item.discards5m)}</td>
-                </tr>
+
+        <div className="space-y-6">
+          <aside className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_16px_48px_rgba(15,23,42,0.05)]">
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl bg-sky-50 p-2.5 text-sky-700"><Waves className="h-5 w-5" /></div>
+              <div>
+                <h2 className="font-semibold text-slate-950">Snapshot Operasional</h2>
+                <p className="text-xs text-slate-500">Ringkasan cepat untuk operator.</p>
+              </div>
+            </div>
+            <div className="mt-5 space-y-3">
+              <QuickRow label="Kapasitas WAN" value={overview ? `${overview.totalDownloadCapacityMbps}/${overview.totalUploadCapacityMbps} Mbps` : 'Belum tersedia'} />
+              <QuickRow label="Packet loss" value={metricValue(overview?.packetLossPercent ?? null, '%')} />
+              <QuickRow label="Sumber suhu" value={overview?.temperatureMetric || 'Belum ada metric'} />
+              <QuickRow label="Pembaruan" value={formatUpdatedTime(overview?.timestamp)} />
+            </div>
+          </aside>
+
+          <aside className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_16px_48px_rgba(15,23,42,0.05)]">
+            <h2 className="font-semibold text-slate-950">Interface Prioritas</h2>
+            <div className="mt-4 space-y-3">
+              {interfaceGroups.focus.slice(0, 5).map((item) => (
+                <div key={item.name} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-mono text-sm font-medium text-slate-950">{item.name}</p>
+                      <p className="mt-1 text-xs text-slate-500">{item.displayName}</p>
+                    </div>
+                    <StatusIndicator status={portStatus(item)} text={portStatusText(item)} />
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                    <span>DL {metricValue(item.downloadMbps, 'Mbps')}</span>
+                    <span>UL {metricValue(item.uploadMbps, 'Mbps')}</span>
+                  </div>
+                </div>
               ))}
-              {(overview?.interfaces || []).length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
-                    Belum ada mapping interface.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+            </div>
+          </aside>
         </div>
-        {(overview?.missingRequiredMetrics || []).length > 0 && (
-          <div className="border-t border-border bg-amber-50 px-6 py-4 text-sm text-amber-800">
-            SNMP scrape sudah terlihat, tetapi beberapa metric MikroTik belum lengkap. Pastikan module SNMP mengeluarkan IF-MIB counter/status dan sysUpTime.
-          </div>
-        )}
       </section>
 
       {data && (
-        <section className="panel-surface rounded-lg overflow-hidden">
-          <div className="bg-white/60 px-6 py-4 border-b border-border">
-            <h2 className="font-semibold">Discovery Results</h2>
-            <p className="text-xs text-muted-foreground mt-1">
-              {data.message} Total series: {data.totalSeries}. Last checked: {new Date(data.timestamp).toLocaleTimeString()}.
+        <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_16px_48px_rgba(15,23,42,0.05)]">
+          <div className="border-b border-slate-100 bg-[linear-gradient(135deg,#fafcff_0%,#f5faff_100%)] px-6 py-5">
+            <h2 className="text-xl font-semibold text-slate-950">Hasil Discovery</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {data.message} Total series: {data.totalSeries}. Diperiksa terakhir: {formatUpdatedTime(data.timestamp)}.
             </p>
           </div>
           <div className="grid gap-3 p-4 md:hidden">
             {data.metrics.map((metric) => (
-              <article key={metric.name} className="rounded-lg border border-border bg-card p-4 space-y-2">
-                <p className="font-mono font-medium break-all">{metric.name}</p>
+              <article key={metric.name} className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                <p className="break-all font-mono font-medium text-slate-950">{metric.name}</p>
                 <div className="text-xs text-muted-foreground">
                   <p><span className="font-semibold text-foreground">Jobs:</span> {metric.jobs.join(', ') || '-'}</p>
                   <p className="break-all"><span className="font-semibold text-foreground">Instances:</span> {metric.instances.join(', ') || '-'}</p>
@@ -335,12 +472,12 @@ export default function MikrotikPage() {
               </article>
             ))}
             {data.metrics.length === 0 && (
-              <div className="px-6 py-8 text-center text-muted-foreground">No SNMP metrics found yet.</div>
+              <div className="px-6 py-8 text-center text-muted-foreground">Belum ada metric SNMP yang terdeteksi.</div>
             )}
           </div>
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-muted/50 text-muted-foreground text-xs uppercase border-b border-border">
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-slate-100 bg-slate-50/80 text-xs uppercase tracking-[0.16em] text-slate-400">
                 <tr>
                   <th className="px-6 py-4 font-medium">Metric</th>
                   <th className="px-6 py-4 font-medium">Jobs</th>
@@ -348,19 +485,19 @@ export default function MikrotikPage() {
                   <th className="px-6 py-4 font-medium">Sample Labels</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="divide-y divide-slate-100">
                 {data.metrics.map((metric) => (
-                  <tr key={metric.name} className="hover:bg-muted/50 transition-colors">
-                    <td className="px-6 py-4 font-mono font-medium">{metric.name}</td>
+                  <tr key={metric.name} className="transition-colors hover:bg-slate-50/80">
+                    <td className="px-6 py-4 font-mono font-medium text-slate-950">{metric.name}</td>
                     <td className="px-6 py-4 text-muted-foreground">{metric.jobs.join(', ') || '-'}</td>
                     <td className="px-6 py-4 font-mono text-muted-foreground">{metric.instances.join(', ') || '-'}</td>
-                    <td className="px-6 py-4 font-mono text-muted-foreground max-w-xl truncate">{labelPreview(metric.sampleLabels)}</td>
+                    <td className="max-w-xl truncate px-6 py-4 font-mono text-muted-foreground">{labelPreview(metric.sampleLabels)}</td>
                   </tr>
                 ))}
                 {data.metrics.length === 0 && (
                   <tr>
                     <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground">
-                      No SNMP metrics found yet.
+                      Belum ada metric SNMP yang terdeteksi.
                     </td>
                   </tr>
                 )}
@@ -369,6 +506,34 @@ export default function MikrotikPage() {
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+function SummaryTile({ title, value, note }: { title: string; value: string; note: string }) {
+  return (
+    <div className="rounded-2xl border border-white/70 bg-white/85 px-4 py-4 shadow-sm backdrop-blur">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{title}</p>
+      <p className="mt-2 text-lg font-semibold leading-7 text-slate-950">{value}</p>
+      <p className="mt-2 text-xs leading-5 text-slate-500">{note}</p>
+    </div>
+  );
+}
+
+function InfoChip({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/80 px-3 py-2 text-xs font-medium text-slate-700 shadow-sm backdrop-blur">
+      <Icon className="h-3.5 w-3.5 text-slate-500" />
+      {label}
+    </span>
+  );
+}
+
+function QuickRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-3 text-sm">
+      <span className="text-slate-500">{label}</span>
+      <span className="text-right font-medium text-slate-900">{value}</span>
     </div>
   );
 }
