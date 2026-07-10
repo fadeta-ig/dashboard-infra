@@ -209,6 +209,8 @@ Semua endpoint dilindungi session auth melalui `src/proxy.ts`, memakai rate limi
 - `GET /api/metrics/mikrotik/overview`
 - `GET /api/ops/history/incidents?limit=200`
 - `GET /api/ops/history/audit?limit=200`
+- `GET /api/ops/reports/monthly?month=YYYY-MM`
+- `GET /api/ops/reports/monthly/pdf?month=YYYY-MM`
 - `POST /api/ops/history/collect`
 - `POST /api/ops/storage/init`
 
@@ -236,8 +238,32 @@ Tabel yang dibuat oleh inisialisasi storage:
 
 Halaman UI yang sudah tersedia:
 
+- `/reports` untuk report bulanan dan download PDF.
 - `/incidents` untuk histori incident target down/up.
 - `/audit` untuk event audit operasional seperti reboot required, service restart state, collector missing, dan metric gap.
+
+## Report Bulanan PDF
+
+Report bulanan tahap ini sudah tersedia dan menghasilkan:
+
+- Executive summary non-teknis.
+- Availability keseluruhan dan per target.
+- Top incident berdasarkan durasi dampak pada bulan terpilih.
+- Audit highlights.
+- Rekomendasi prioritas.
+- Download PDF dengan logo WIG.
+
+Sumber data report:
+
+- `monitoring_incidents`
+- `monitoring_audit_events`
+- target aktif dari Prometheus saat report digenerate
+
+Catatan perhitungan:
+
+- Incident yang overlap lintas bulan tetap dihitung hanya pada porsi waktu yang masuk ke bulan report.
+- Untuk bulan berjalan, report memakai window parsial sampai waktu generate terakhir.
+- Snapshot report disimpan ke tabel `report_snapshots`.
 
 ## Inisialisasi Database
 

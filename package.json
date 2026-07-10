@@ -16,6 +16,7 @@
     "lucide-react": "^1.23.0",
     "mysql2": "^3.22.6",
     "next": "16.2.10",
+    "pdf-lib": "^1.17.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.9.2",

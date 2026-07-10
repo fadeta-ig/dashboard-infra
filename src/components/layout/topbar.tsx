@@ -8,6 +8,7 @@ const mobileLinks = [
   { href: '/', label: 'Summary' },
   { href: '/server', label: 'Server' },
   { href: '/network', label: 'Network' },
+  { href: '/reports', label: 'Report' },
   { href: '/incidents', label: 'Incident' },
   { href: '/audit', label: 'Audit' },
   { href: '/panduan', label: 'Panduan' },
