@@ -31,6 +31,24 @@ interface MonthlyReportRecommendation {
   detail: string;
 }
 
+interface MonthlyReportHealthScore {
+  domainKey: string;
+  domainLabel: string;
+  averageScore: number;
+  latestScore: number;
+  worstScore: number;
+  status: string;
+}
+
+interface MonthlyReportCapacityItem {
+  metricKey: string;
+  metricLabel: string;
+  unit: string;
+  averageValue: number | null;
+  peakValue: number | null;
+  p95Value: number | null;
+}
+
 interface MonthlyReportData {
   reportMonth: string;
   generatedAt: string;
@@ -61,7 +79,11 @@ interface MonthlyReportData {
     totalEvents: number;
     criticalEvents: number;
     warningEvents: number;
-    topEventTypes: Array<{ eventType: string; count: number }>;
+    topEventTypes: Array<{ eventType: string; label: string; count: number }>;
+  };
+  operationalSummary: {
+    healthScores: MonthlyReportHealthScore[];
+    capacity: MonthlyReportCapacityItem[];
   };
   recommendations: MonthlyReportRecommendation[];
 }
@@ -88,6 +110,11 @@ function formatDuration(seconds: number) {
 function currentMonthValue() {
   const now = new Date();
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function formatMetricValue(value: number | null, unit: string) {
+  if (value === null) return 'Belum ada data';
+  return `${value.toFixed(2)} ${unit}`;
 }
 
 export default function ReportsPage() {
@@ -139,7 +166,7 @@ export default function ReportsPage() {
     return (
       <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6">
         <h2 className="flex items-center gap-2 text-lg font-bold text-destructive">
-          <AlertTriangle className="h-5 w-5" /> Monthly Report Error
+          <AlertTriangle className="h-5 w-5" /> Laporan gagal dimuat
         </h2>
         <p className="mt-2 text-muted-foreground">{error}</p>
       </div>
@@ -150,9 +177,9 @@ export default function ReportsPage() {
     <div className="animate-fade-in animate-slide-up space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-primary">Monthly Report</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-primary">Laporan Bulanan</h1>
           <p className="mt-1 text-sm font-medium text-muted-foreground">
-            Executive summary, availability, top incident, dan rekomendasi dalam format yang mudah dibaca.
+            Ringkasan operasional, availability, incident utama, kapasitas, dan rekomendasi dalam format yang mudah dibaca.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -198,11 +225,11 @@ export default function ReportsPage() {
                 <FileText className="h-5 w-5" />
               </div>
               <div className="space-y-2">
-                <h2 className="text-lg font-semibold text-slate-900">Executive Summary</h2>
+                <h2 className="text-lg font-semibold text-slate-900">Ringkasan Manajemen</h2>
                 <p className="text-base font-medium text-slate-800">{report.executiveSummary.headline}</p>
                 <p className="text-sm leading-6 text-slate-600">{report.executiveSummary.summary}</p>
                 <p className="text-xs text-slate-500">
-                  Digenerate {format(new Date(report.generatedAt), 'dd MMM yyyy HH:mm')} •
+                  Digenerate {format(new Date(report.generatedAt), 'dd MMM yyyy HH:mm')} -
                   Window {format(new Date(report.window.start), 'dd MMM yyyy')} sampai {format(new Date(report.window.end), 'dd MMM yyyy')}
                 </p>
               </div>
@@ -210,18 +237,58 @@ export default function ReportsPage() {
           </section>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <StatCard label="Availability" value={report.executiveSummary.overallAvailabilityPercent === null ? 'N/A' : `${report.executiveSummary.overallAvailabilityPercent.toFixed(2)}%`} />
-            <StatCard label="Monitored Targets" value={String(report.availability.monitoredTargets)} />
+            <StatCard label="Ketersediaan" value={report.executiveSummary.overallAvailabilityPercent === null ? 'N/A' : `${report.executiveSummary.overallAvailabilityPercent.toFixed(2)}%`} />
+            <StatCard label="Target Termonitor" value={String(report.availability.monitoredTargets)} />
             <StatCard label="Total Incident" value={String(report.executiveSummary.totalIncidents)} />
-            <StatCard label="Open Incident" value={String(report.executiveSummary.currentOpenIncidents)} tone="danger" />
-            <StatCard label="Audit Event" value={String(report.executiveSummary.auditEvents)} />
+            <StatCard label="Incident Berjalan" value={String(report.executiveSummary.currentOpenIncidents)} tone="danger" />
+            <StatCard label="Catatan Operasional" value={String(report.executiveSummary.auditEvents)} />
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <section className="panel-surface rounded-lg p-5">
+              <h2 className="font-semibold text-slate-900">Kesehatan Operasional</h2>
+              <div className="mt-4 space-y-3">
+                {report.operationalSummary.healthScores.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Belum ada health score bulanan.</p>
+                ) : report.operationalSummary.healthScores.map((score) => (
+                  <div key={score.domainKey} className="rounded-md border border-border bg-card px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-medium text-slate-800">{score.domainLabel}</span>
+                      <span className="text-slate-500">{score.status}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Rata-rata {score.averageScore.toFixed(2)} - terakhir {score.latestScore.toFixed(2)} - terendah {score.worstScore.toFixed(2)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="panel-surface rounded-lg p-5">
+              <h2 className="font-semibold text-slate-900">Kapasitas dan Tren</h2>
+              <div className="mt-4 space-y-3">
+                {report.operationalSummary.capacity.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Belum ada data kapasitas harian.</p>
+                ) : report.operationalSummary.capacity.map((item) => (
+                  <div key={item.metricKey} className="rounded-md border border-border bg-card px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-medium text-slate-800">{item.metricLabel}</span>
+                      <span className="text-slate-500">{formatMetricValue(item.peakValue, item.unit)}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Rata-rata {formatMetricValue(item.averageValue, item.unit)} - P95 {formatMetricValue(item.p95Value, item.unit)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
           </div>
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
             <section className="panel-surface rounded-lg xl:col-span-2">
               <div className="border-b border-border px-5 py-4">
-                <h2 className="font-semibold text-slate-900">Availability per Target</h2>
-                <p className="mt-1 text-xs text-muted-foreground">Target dengan availability terendah tampil di atas.</p>
+                <h2 className="font-semibold text-slate-900">Ketersediaan per Target</h2>
+                <p className="mt-1 text-xs text-muted-foreground">Target dengan ketersediaan terendah tampil di atas.</p>
               </div>
               <div className="grid gap-3 p-4 md:hidden">
                 {report.availability.targets.map((target) => (
@@ -229,7 +296,6 @@ export default function ReportsPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-semibold">{target.label}</p>
-                        <p className="text-xs text-muted-foreground">{target.targetKey}</p>
                       </div>
                       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
                         {target.availabilityPercent.toFixed(2)}%
@@ -237,7 +303,7 @@ export default function ReportsPage() {
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       <div>
-                        <p className="text-xs uppercase text-muted-foreground">Downtime</p>
+                        <p className="text-xs uppercase text-muted-foreground">Waktu Gangguan</p>
                         <p>{formatDuration(target.downtimeSeconds)}</p>
                       </div>
                       <div>
@@ -253,8 +319,8 @@ export default function ReportsPage() {
                   <thead className="border-b border-border bg-muted/50 text-xs uppercase text-muted-foreground">
                     <tr>
                       <th className="px-5 py-4 font-medium">Target</th>
-                      <th className="px-5 py-4 font-medium">Availability</th>
-                      <th className="px-5 py-4 font-medium">Downtime</th>
+                      <th className="px-5 py-4 font-medium">Ketersediaan</th>
+                      <th className="px-5 py-4 font-medium">Waktu Gangguan</th>
                       <th className="px-5 py-4 font-medium">Incident</th>
                       <th className="px-5 py-4 font-medium">Status</th>
                     </tr>
@@ -264,7 +330,6 @@ export default function ReportsPage() {
                       <tr key={target.targetKey} className="transition-colors hover:bg-muted/40">
                         <td className="px-5 py-4">
                           <p className="font-medium">{target.label}</p>
-                          <p className="text-xs text-muted-foreground">{target.targetKey}</p>
                         </td>
                         <td className="px-5 py-4 font-semibold">{target.availabilityPercent.toFixed(2)}%</td>
                         <td className="px-5 py-4">{formatDuration(target.downtimeSeconds)}</td>
@@ -283,16 +348,16 @@ export default function ReportsPage() {
 
             <section className="space-y-6">
               <div className="panel-surface rounded-lg p-5">
-                <h2 className="font-semibold text-slate-900">Audit Highlights</h2>
+                <h2 className="font-semibold text-slate-900">Catatan Operasional</h2>
                 <div className="mt-4 space-y-3 text-sm">
-                  <SummaryRow label="Total Event" value={String(report.auditHighlights.totalEvents)} />
-                  <SummaryRow label="Critical Event" value={String(report.auditHighlights.criticalEvents)} />
-                  <SummaryRow label="Warning Event" value={String(report.auditHighlights.warningEvents)} />
+                  <SummaryRow label="Total Catatan" value={String(report.auditHighlights.totalEvents)} />
+                  <SummaryRow label="Kritis" value={String(report.auditHighlights.criticalEvents)} />
+                  <SummaryRow label="Peringatan" value={String(report.auditHighlights.warningEvents)} />
                 </div>
                 <div className="mt-4 space-y-2">
                   {report.auditHighlights.topEventTypes.map((item) => (
                     <div key={item.eventType} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm">
-                      <span className="font-medium text-slate-700">{item.eventType}</span>
+                      <span className="font-medium text-slate-700">{item.label}</span>
                       <span className="text-slate-500">{item.count}</span>
                     </div>
                   ))}
@@ -320,7 +385,7 @@ export default function ReportsPage() {
 
           <section className="panel-surface rounded-lg overflow-hidden">
             <div className="border-b border-border px-5 py-4">
-              <h2 className="font-semibold text-slate-900">Top Incident</h2>
+              <h2 className="font-semibold text-slate-900">Incident Berdampak Terbesar</h2>
               <p className="mt-1 text-xs text-muted-foreground">Diurutkan berdasarkan dampak durasi terlama di bulan terpilih.</p>
             </div>
             <div className="grid gap-3 p-4 md:hidden">
@@ -357,7 +422,7 @@ export default function ReportsPage() {
                     <th className="px-5 py-4 font-medium">Status</th>
                     <th className="px-5 py-4 font-medium">Started</th>
                     <th className="px-5 py-4 font-medium">Resolved</th>
-                    <th className="px-5 py-4 font-medium">Impact Duration</th>
+                    <th className="px-5 py-4 font-medium">Durasi Dampak</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
