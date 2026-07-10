@@ -3,23 +3,11 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { Activity, BookOpen, ChevronLeft, ChevronRight, ClipboardList, FileText, Gauge, LogOut, Network, RouterIcon, Server, ShieldAlert, Target } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebar } from '@/components/layout/sidebar-context';
 import { BRANDING } from '@/lib/branding';
-
-const navItems = [
-  { name: 'Summary Dashboard', href: '/', icon: Activity },
-  { name: 'Server Status', href: '/server', icon: Server },
-  { name: 'Network Health', href: '/network', icon: Network },
-  { name: 'Health & Capacity', href: '/analytics', icon: Gauge },
-  { name: 'Target Jobs', href: '/targets', icon: Target },
-  { name: 'Monthly Report', href: '/reports', icon: FileText },
-  { name: 'Incident History', href: '/incidents', icon: ShieldAlert },
-  { name: 'Audit Log', href: '/audit', icon: ClipboardList },
-  { name: 'MikroTik / SNMP', href: '/mikrotik', icon: RouterIcon },
-  { name: 'Panduan Dashboard', href: '/panduan', icon: BookOpen },
-];
+import { navSections } from '@/components/layout/navigation';
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -71,35 +59,49 @@ export function Sidebar() {
       </div>
 
       {/* Navigation Links */}
-      <nav className="flex-1 py-4 flex flex-col gap-1 px-3 overflow-y-auto">
-        {navItems.map((item) => {
-          const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              title={isCollapsed ? item.name : undefined}
-              className={cn(
-                'group flex items-center px-3 py-2 rounded text-sm transition-all duration-150 relative overflow-hidden',
-                isActive
-                  ? 'bg-slate-100 text-black font-medium'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
-                isCollapsed ? 'justify-center' : 'gap-3'
+      <nav className="flex-1 overflow-y-auto px-3 py-4">
+        <div className="space-y-5">
+          {navSections.map((section) => (
+            <div key={section.title} className="space-y-1.5">
+              {!isCollapsed && (
+                <p className="px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  {section.title}
+                </p>
               )}
-            >
-              <item.icon className={cn("h-4 w-4 shrink-0 transition-colors", isActive ? "text-black" : "text-slate-400 group-hover:text-slate-600")} />
-              
-              <span 
-                className={cn(
-                  "transition-all duration-300 whitespace-nowrap",
-                  isCollapsed ? "w-0 opacity-0 hidden" : "opacity-100"
-                )}
-              >
-                {item.name}
-              </span>
-            </Link>
-          );
-        })}
+              <div className="space-y-1">
+                {section.items.map((item) => {
+                  const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      title={isCollapsed ? item.name : undefined}
+                      className={cn(
+                        'group flex items-center rounded-lg px-3 py-2.5 text-sm transition-all duration-150',
+                        isActive
+                          ? 'bg-slate-100 text-slate-950'
+                          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+                        isCollapsed ? 'justify-center' : 'gap-3'
+                      )}
+                    >
+                      <item.icon className={cn('h-4 w-4 shrink-0 transition-colors', isActive ? 'text-slate-900' : 'text-slate-400 group-hover:text-slate-600')} />
+
+                      <div
+                        className={cn(
+                          'min-w-0 transition-all duration-300',
+                          isCollapsed ? 'hidden w-0 opacity-0' : 'block flex-1 opacity-100'
+                        )}
+                      >
+                        <span className="block truncate font-medium">{item.name}</span>
+                        <span className="block truncate text-[11px] text-slate-500">{item.description}</span>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
       </nav>
 
       {/* Footer Area */}
