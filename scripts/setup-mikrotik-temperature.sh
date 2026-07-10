@@ -29,8 +29,8 @@ groups:
       - record: mikrotik_temperature_celsius
         expr: |
           max by (instance) (
-            mtxrHlTemperature{instance="${MIKROTIK_INSTANCE}"}
-            or mtxrHlTemp{instance="${MIKROTIK_INSTANCE}"}
+            (mtxrHlTemperature{instance="${MIKROTIK_INSTANCE}"} / 10)
+            or (mtxrHlTemp{instance="${MIKROTIK_INSTANCE}"} / 10)
             or mtxrSystemTemperature{instance="${MIKROTIK_INSTANCE}"}
             or mikrotikTemperature{instance="${MIKROTIK_INSTANCE}"}
             or (entPhySensorValue{instance="${MIKROTIK_INSTANCE}"} / 10)
@@ -48,8 +48,10 @@ echo "  curl -X POST ${PROMETHEUS_RELOAD_URL}"
 echo "  Jika muncul 'Lifecycle API is not enabled', reload service Prometheus via systemd atau aktifkan --web.enable-lifecycle."
 echo
 echo "Verifikasi metric suhu setelah reload:"
+echo "  curl -g -s 'http://127.0.0.1:9090/api/v1/query?query=mtxrHlTemperature{instance=\"${MIKROTIK_INSTANCE}\"}'"
 echo "  curl -g -s 'http://127.0.0.1:9090/api/v1/query?query=mikrotik_temperature_celsius{instance=\"${MIKROTIK_INSTANCE}\"}'"
+echo "  curl -g -s 'http://127.0.0.1:9090/api/v1/query?query=prometheus_config_last_reload_successful'"
 echo
 echo "Jika hasil masih kosong, berarti SNMP exporter belum mengeluarkan metric suhu dari MikroTik."
-echo "Lanjutkan cek metric mentah yang mengandung temp/thermal:"
-echo "  curl -s 'http://127.0.0.1:9090/api/v1/label/__name__/values' | grep -Ei 'temp|thermal|mtxr'"
+echo "Jika raw metric ada tapi recording rule kosong, cek rule_files di prometheus.yml:"
+echo "  sudo grep -n 'rule_files' /etc/prometheus/prometheus.yml"
