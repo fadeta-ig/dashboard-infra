@@ -16,7 +16,6 @@ import {
   TriangleAlert,
   Waves,
 } from 'lucide-react';
-import { StatCard } from '@/components/dashboard/stat-card';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';
 import type { MikrotikDiscoveryResponse } from '@/lib/types';
 import { getErrorMessage } from '@/lib/metrics';
@@ -205,15 +204,6 @@ export default function MikrotikPage() {
     }
   };
 
-  const interfaceGroups = useMemo(() => {
-    const interfaces = overview?.interfaces || [];
-    return {
-      focus: interfaces.filter((item) => ['wan', 'trunk', 'vpn'].includes(item.role)),
-      access: interfaces.filter((item) => ['vlan', 'lan'].includes(item.role)),
-      passive: interfaces.filter((item) => ['unused', 'loopback'].includes(item.role)),
-    };
-  }, [overview?.interfaces]);
-
   const issueCount = useMemo(() => {
     if (!overview) return 0;
     return overview.interfaces.filter((item) => portStatus(item) === 'critical' || (item.errors5m || 0) > 0 || (item.discards5m || 0) > 0).length;
@@ -275,53 +265,101 @@ export default function MikrotikPage() {
       )}
 
       {loadingOverview ? (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-8">
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((item) => <div key={item} className="h-32 animate-pulse rounded-lg border border-border bg-muted" />)}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {[1, 2, 3, 4].map((item) => <div key={item} className="h-36 animate-pulse rounded-lg border border-border bg-muted" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
-          <StatCard title="WAN Download" value={metricValue(overview?.totalDownloadMbps ?? null, 'Mbps')} description={overview ? `Kapasitas ${overview.totalDownloadCapacityMbps} Mbps / ${utilizationText(overview.totalDownloadUtilizationPercent)}` : undefined} icon={ArrowDownToLine} status={overview?.totalDownloadMbps === null ? 'unknown' : 'healthy'} />
-          <StatCard title="WAN Upload" value={metricValue(overview?.totalUploadMbps ?? null, 'Mbps')} description={overview ? `Kapasitas ${overview.totalUploadCapacityMbps} Mbps / ${utilizationText(overview.totalUploadUtilizationPercent)}` : undefined} icon={ArrowUpFromLine} status={overview?.totalUploadMbps === null ? 'unknown' : 'healthy'} />
-          <StatCard title="Router Uptime" value={formatDuration(overview?.routerUptimeSeconds ?? null)} icon={Timer} status={overview?.routerUptimeSeconds === null ? 'unknown' : 'healthy'} />
-          <StatCard
-            title="Router Temperature"
-            value={overview?.temperatureCelsius === null || overview?.temperatureCelsius === undefined ? 'Belum tersedia' : `${overview.temperatureCelsius.toFixed(1)} \u00B0C`}
-            description={overview?.temperatureMetric || 'Metric suhu SNMP belum ditemukan'}
-            icon={Thermometer}
-            status={
-              overview?.temperatureCelsius === null || overview?.temperatureCelsius === undefined
-                ? 'unknown'
-                : overview.temperatureCelsius >= 85
-                  ? 'critical'
-                  : overview.temperatureCelsius >= 70
-                    ? 'warning'
-                    : 'healthy'
-            }
-          />
-          <StatCard title="Ping Gateway" value={metricValue(overview?.pingMs ?? null, 'ms')} icon={RouterIcon} status={latencyStatus(overview?.pingMs ?? null, 20, 80)} />
-          <StatCard title="Jitter 5m" value={metricValue(overview?.jitterMs ?? null, 'ms')} icon={Gauge} status={latencyStatus(overview?.jitterMs ?? null, 5, 20)} />
-          <StatCard title="Errors 5m" value={countValue(overview?.totalErrors5m ?? null)} icon={TriangleAlert} status={(overview?.totalErrors5m ?? null) === null ? 'unknown' : (overview?.totalErrors5m || 0) > 0 ? 'warning' : 'healthy'} />
-          <StatCard title="Drops 5m" value={countValue(overview?.totalDiscards5m ?? null)} icon={RadioTower} status={(overview?.totalDiscards5m ?? null) === null ? 'unknown' : (overview?.totalDiscards5m || 0) > 0 ? 'warning' : 'healthy'} />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <MetricStackCard title="Traffic" note="Ringkasan uplink WAN">
+            <MetricLine
+              icon={ArrowDownToLine}
+              label="Download"
+              value={metricValue(overview?.totalDownloadMbps ?? null, 'Mbps')}
+              subtext={overview ? `Kapasitas ${overview.totalDownloadCapacityMbps} Mbps / ${utilizationText(overview.totalDownloadUtilizationPercent)}` : 'Belum tersedia'}
+              status={overview?.totalDownloadMbps === null ? 'unknown' : 'healthy'}
+            />
+            <MetricLine
+              icon={ArrowUpFromLine}
+              label="Upload"
+              value={metricValue(overview?.totalUploadMbps ?? null, 'Mbps')}
+              subtext={overview ? `Kapasitas ${overview.totalUploadCapacityMbps} Mbps / ${utilizationText(overview.totalUploadUtilizationPercent)}` : 'Belum tersedia'}
+              status={overview?.totalUploadMbps === null ? 'unknown' : 'healthy'}
+            />
+          </MetricStackCard>
+
+          <MetricStackCard title="Router" note="Status perangkat utama">
+            <MetricLine
+              icon={Timer}
+              label="Uptime"
+              value={formatDuration(overview?.routerUptimeSeconds ?? null)}
+              status={overview?.routerUptimeSeconds === null ? 'unknown' : 'healthy'}
+            />
+            <MetricLine
+              icon={Thermometer}
+              label="Temperature"
+              value={overview?.temperatureCelsius === null || overview?.temperatureCelsius === undefined ? 'Belum tersedia' : `${overview.temperatureCelsius.toFixed(1)} \u00B0C`}
+              subtext={overview?.temperatureMetric || 'Metric suhu SNMP belum ditemukan'}
+              status={
+                overview?.temperatureCelsius === null || overview?.temperatureCelsius === undefined
+                  ? 'unknown'
+                  : overview.temperatureCelsius >= 85
+                    ? 'critical'
+                    : overview.temperatureCelsius >= 70
+                      ? 'warning'
+                      : 'healthy'
+              }
+            />
+          </MetricStackCard>
+
+          <MetricStackCard title="Latency" note="Kualitas koneksi gateway">
+            <MetricLine
+              icon={RouterIcon}
+              label="Ping Gateway"
+              value={metricValue(overview?.pingMs ?? null, 'ms')}
+              status={latencyStatus(overview?.pingMs ?? null, 20, 80)}
+            />
+            <MetricLine
+              icon={Gauge}
+              label="Jitter 5m"
+              value={metricValue(overview?.jitterMs ?? null, 'ms')}
+              status={latencyStatus(overview?.jitterMs ?? null, 5, 20)}
+            />
+          </MetricStackCard>
+
+          <MetricStackCard title="Stability" note="Error dan packet handling">
+            <MetricLine
+              icon={TriangleAlert}
+              label="Errors 5m"
+              value={countValue(overview?.totalErrors5m ?? null)}
+              status={(overview?.totalErrors5m ?? null) === null ? 'unknown' : (overview?.totalErrors5m || 0) > 0 ? 'warning' : 'healthy'}
+            />
+            <MetricLine
+              icon={RadioTower}
+              label="Drops 5m"
+              value={countValue(overview?.totalDiscards5m ?? null)}
+              status={(overview?.totalDiscards5m ?? null) === null ? 'unknown' : (overview?.totalDiscards5m || 0) > 0 ? 'warning' : 'healthy'}
+            />
+          </MetricStackCard>
         </div>
       )}
 
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
         <div className="panel-surface rounded-lg p-5">
-          <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+          <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h2 className="text-base font-semibold text-slate-900">Interface MikroTik Terkonfigurasi</h2>
               <p className="mt-1 text-sm text-slate-500">
                 {overview?.configuredInterfaceCount || 0} interface terkonfigurasi / {overview?.liveInterfaceMetricCount || 0} interface dengan metric aktif.
               </p>
             </div>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-right">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 lg:min-w-[220px] lg:text-right">
               <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400">Metric Belum Lengkap</p>
               <p className="mt-1 text-sm text-slate-700">{(overview?.missingRequiredMetrics || []).join(', ') || 'Tidak ada'}</p>
             </div>
           </div>
 
           <div className="grid gap-3 p-4 md:hidden">
-            {interfaceGroups.focus.concat(interfaceGroups.access).map((item) => (
+            {(overview?.interfaces || []).map((item) => (
               <article key={`${item.instance}-${item.name}`} className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/70 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -360,41 +398,41 @@ export default function MikrotikPage() {
           </div>
 
           <div className="hidden overflow-x-auto pt-4 md:block">
-            <table className="w-full min-w-[980px] text-left text-sm">
+            <table className="w-full min-w-[920px] text-left text-sm">
               <thead className="border-b border-slate-100 text-xs uppercase tracking-[0.16em] text-slate-400">
                 <tr>
-                  <th className="px-6 py-4 font-medium">Interface</th>
-                  <th className="px-6 py-4 font-medium">Role</th>
-                  <th className="px-6 py-4 font-medium">Port</th>
-                  <th className="px-6 py-4 text-right font-medium">Download</th>
-                  <th className="px-6 py-4 text-right font-medium">Upload</th>
-                  <th className="px-6 py-4 text-right font-medium">Utilization</th>
-                  <th className="px-6 py-4 text-right font-medium">Err/Drop 5m</th>
+                  <th className="px-5 py-3 font-medium">Interface</th>
+                  <th className="px-5 py-3 font-medium">Role</th>
+                  <th className="px-5 py-3 font-medium">Port</th>
+                  <th className="px-5 py-3 text-right font-medium">Download</th>
+                  <th className="px-5 py-3 text-right font-medium">Upload</th>
+                  <th className="px-5 py-3 text-right font-medium">Utilization</th>
+                  <th className="px-5 py-3 text-right font-medium">Err/Drop 5m</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {(overview?.interfaces || []).map((item) => (
                   <tr key={`${item.instance}-${item.name}`} className="transition-colors hover:bg-slate-50/80">
-                    <td className="px-6 py-4">
+                    <td className="px-5 py-4">
                       <div className="font-mono text-sm font-medium text-slate-900">{item.name}</div>
-                      <div className="mt-1 text-xs text-muted-foreground">{item.displayName}{item.comment ? ` / ${item.comment}` : ''}</div>
+                      <div className="mt-1 max-w-[260px] text-xs leading-5 text-muted-foreground">{item.displayName}{item.comment ? ` / ${item.comment}` : ''}</div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-5 py-4">
                       <div className="flex flex-wrap gap-2">
                         <span className={cn('rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase', roleTone(item.role))}>{roleBadge(item.role)}</span>
                         {item.isp && <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">{item.isp}</span>}
                       </div>
                     </td>
-                    <td className="px-6 py-4"><StatusIndicator status={portStatus(item)} text={portStatusText(item)} /></td>
-                    <td className="px-6 py-4 text-right font-mono">{metricValue(item.downloadMbps, 'Mbps')}</td>
-                    <td className="px-6 py-4 text-right font-mono">{metricValue(item.uploadMbps, 'Mbps')}</td>
-                    <td className="px-6 py-4 text-right font-mono">{utilizationText(maxUtilization(item))}</td>
-                    <td className="px-6 py-4 text-right font-mono">{countValue(item.errors5m)} / {countValue(item.discards5m)}</td>
+                    <td className="px-5 py-4"><StatusIndicator status={portStatus(item)} text={portStatusText(item)} /></td>
+                    <td className="px-5 py-4 text-right font-mono text-[13px]">{metricValue(item.downloadMbps, 'Mbps')}</td>
+                    <td className="px-5 py-4 text-right font-mono text-[13px]">{metricValue(item.uploadMbps, 'Mbps')}</td>
+                    <td className="px-5 py-4 text-right font-mono text-[13px]">{utilizationText(maxUtilization(item))}</td>
+                    <td className="px-5 py-4 text-right font-mono text-[13px]">{countValue(item.errors5m)} / {countValue(item.discards5m)}</td>
                   </tr>
                 ))}
                 {(overview?.interfaces || []).length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
+                    <td colSpan={7} className="px-5 py-8 text-center text-muted-foreground">
                       Belum ada mapping interface.
                     </td>
                   </tr>
@@ -419,7 +457,7 @@ export default function MikrotikPage() {
                 <p className="text-xs text-slate-500">Ringkasan cepat untuk operator.</p>
               </div>
             </div>
-            <div className="mt-5 space-y-3">
+            <div className="mt-4 divide-y divide-slate-100">
               <QuickRow label="Kapasitas WAN" value={overview ? `${overview.totalDownloadCapacityMbps}/${overview.totalUploadCapacityMbps} Mbps` : 'Belum tersedia'} />
               <QuickRow label="Packet loss" value={metricValue(overview?.packetLossPercent ?? null, '%')} />
               <QuickRow label="Sumber suhu" value={overview?.temperatureMetric || 'Belum ada metric'} />
@@ -508,9 +546,53 @@ function InfoChip({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
 
 function QuickRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+    <div className="flex items-start justify-between gap-4 py-3 text-sm">
       <span className="text-slate-500">{label}</span>
       <span className="text-right text-slate-900">{value}</span>
+    </div>
+  );
+}
+
+function MetricStackCard({ title, note, children }: { title: string; note: string; children: React.ReactNode }) {
+  return (
+    <section className="panel-surface rounded-lg p-4">
+      <div className="border-b border-slate-100 pb-3">
+        <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+        <p className="mt-1 text-xs text-slate-500">{note}</p>
+      </div>
+      <div className="mt-1 divide-y divide-slate-100">{children}</div>
+    </section>
+  );
+}
+
+function MetricLine({
+  icon: Icon,
+  label,
+  value,
+  subtext,
+  status,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  subtext?: string;
+  status: 'healthy' | 'warning' | 'critical' | 'unknown';
+}) {
+  return (
+    <div className="flex items-start gap-3 py-3">
+      <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-slate-700">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-400">{label}</p>
+            <p className="mt-1 text-lg font-medium text-slate-900">{value}</p>
+          </div>
+          <StatusIndicator status={status} />
+        </div>
+        {subtext && <p className="mt-1 text-xs leading-5 text-slate-500">{subtext}</p>}
+      </div>
     </div>
   );
 }
