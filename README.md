@@ -61,6 +61,14 @@ DASHBOARD_SESSION_SECRET=gunakan-secret-session-yang-berbeda
 # Opsional: isi false jika dashboard production masih diakses lewat HTTP internal/IP:3000.
 # Untuk HTTPS publik, kosongkan atau isi true.
 DASHBOARD_COOKIE_SECURE=
+APP_BASE_URL=http://127.0.0.1:3000
+OPS_INTERNAL_TOKEN=gunakan-token-internal-panjang-acak
+HISTORY_COLLECT_INTERVAL_MS=60000
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_USER=infra_app
+MYSQL_PASSWORD=ganti-password-kuat
+MYSQL_DATABASE=infra
 ```
 
 Jangan commit file `.env`. Jangan tampilkan password, token, SNMP community, atau secret lain di UI.
@@ -199,8 +207,64 @@ Semua endpoint dilindungi session auth melalui `src/proxy.ts`, memakai rate limi
 - `GET /api/metrics/readiness`
 - `GET /api/metrics/mikrotik/discovery`
 - `GET /api/metrics/mikrotik/overview`
+- `GET /api/ops/history/incidents?limit=200`
+- `GET /api/ops/history/audit?limit=200`
+- `POST /api/ops/history/collect`
+- `POST /api/ops/storage/init`
 
 PromQL disimpan di backend pada `src/lib/metrics.ts` dan route handler terkait.
+
+Endpoint `/api/ops/*` tetap private. Route collector bisa dipanggil oleh session login valid atau header internal `x-ops-token` yang cocok dengan `OPS_INTERNAL_TOKEN`.
+
+## Monitoring History dan Audit Log
+
+Fondasi history storage sekarang sudah aktif di MySQL untuk kebutuhan:
+
+- Incident timeline down/up target.
+- Audit log operasional.
+- Snapshot report bulanan tahap berikutnya.
+- Health score dan capacity planning tahap berikutnya.
+
+Tabel yang dibuat oleh inisialisasi storage:
+
+- `monitoring_incidents`
+- `monitoring_audit_events`
+- `monitoring_state_snapshots`
+- `report_snapshots`
+- `health_scores`
+- `capacity_daily`
+
+Halaman UI yang sudah tersedia:
+
+- `/incidents` untuk histori incident target down/up.
+- `/audit` untuk event audit operasional seperti reboot required, service restart state, collector missing, dan metric gap.
+
+## Inisialisasi Database
+
+Jalankan sekali setelah `.env` MySQL valid:
+
+```bash
+node scripts/init-monitoring-storage.mjs
+```
+
+Jika berhasil, script akan membuat database dan tabel yang dibutuhkan. Pada server production, sangat disarankan memakai user aplikasi seperti `infra_app`, bukan `root`.
+
+## Worker Collector Periodik
+
+Collector periodik berjalan terpisah dari web app dan akan menulis history ke MySQL pada interval tertentu.
+
+Manual run:
+
+```bash
+npm run history:collect
+```
+
+Worker ini membutuhkan:
+
+- `APP_BASE_URL`
+- `OPS_INTERNAL_TOKEN`
+- `HISTORY_COLLECT_INTERVAL_MS`
+- konfigurasi `MYSQL_*`
 
 ## Development
 
@@ -220,6 +284,45 @@ npm run start
 ```
 
 Aplikasi memakai system font stack, bukan Google Fonts, agar build server internal tidak bergantung internet.
+
+## Deploy dengan PM2
+
+Project sekarang menyediakan `ecosystem.config.cjs` untuk dua proses:
+
+- `dashboard-infra` untuk Next.js app.
+- `dashboard-history-collector` untuk collector histori periodik.
+
+Langkah awal di server:
+
+```bash
+npm install
+node scripts/init-monitoring-storage.mjs
+npm run build
+pm2 start ecosystem.config.cjs
+pm2 save
+```
+
+Deploy berikutnya:
+
+```bash
+npm run deploy
+```
+
+Script deploy sekarang akan:
+
+- `git pull`
+- `npm install`
+- `npm run build`
+- inisialisasi storage schema
+- `pm2 startOrReload ecosystem.config.cjs --update-env`
+
+Jika `git pull` gagal karena local changes di server, cek dulu file yang berubah dengan:
+
+```bash
+git status
+```
+
+Lalu putuskan apakah file itu memang perubahan server yang harus dipertahankan, di-commit, atau di-restore.
 
 ## Deploy di Ubuntu dengan systemd
 

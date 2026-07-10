@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "deploy": "git pull && npm install && npm run build && pm2 restart dashboard-infra"
+    "deploy": "git pull && npm install && npm run build && node scripts/init-monitoring-storage.mjs && pm2 startOrReload ecosystem.config.cjs --update-env",
+    "history:collect": "node scripts/init-monitoring-storage.mjs && node scripts/history-collector.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",

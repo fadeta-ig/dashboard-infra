@@ -2,9 +2,17 @@
 import { SESSION_COOKIE, verifySessionValue } from '@/lib/auth';
 
 const PUBLIC_PATHS = ['/login', '/api/auth/login'];
+const OPS_TOKEN_HEADER = 'x-ops-token';
 
 function isPublicPath(pathname: string) {
   return PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+}
+
+function hasValidOpsToken(request: NextRequest) {
+  const expectedToken = process.env.OPS_INTERNAL_TOKEN;
+  if (!expectedToken) return false;
+  const providedToken = request.headers.get(OPS_TOKEN_HEADER);
+  return providedToken === expectedToken;
 }
 
 function apiUnauthorized() {
@@ -21,6 +29,7 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (isPublicPath(pathname)) return NextResponse.next();
+  if (pathname.startsWith('/api/ops/') && hasValidOpsToken(request)) return NextResponse.next();
 
   const isValidSession = await verifySessionValue(request.cookies.get(SESSION_COOKIE)?.value);
   if (isValidSession) return NextResponse.next();
