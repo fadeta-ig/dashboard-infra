@@ -221,23 +221,21 @@ export default function MikrotikPage() {
 
   return (
     <div className="space-y-6 animate-fade-in animate-slide-up">
-      <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-[linear-gradient(135deg,#f8fafc_0%,#eef6ff_45%,#f9fcff_100%)] px-6 py-7 shadow-[0_20px_60px_rgba(15,23,42,0.06)] sm:px-8">
-        <div className="absolute -right-20 top-0 h-56 w-56 rounded-full bg-sky-200/30 blur-3xl" />
-        <div className="absolute left-1/3 top-10 h-40 w-40 rounded-full bg-emerald-200/20 blur-3xl" />
-        <div className="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">MikroTik Gateway {overview?.gateway || '192.168.20.1'}</p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">MikroTik Gateway Overview</h1>
-            <p className="mt-4 max-w-2xl text-sm font-medium leading-7 text-slate-600 sm:text-base">
+      <section className="panel-surface rounded-lg border border-border px-5 py-5 sm:px-6">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-2xl">
+            <p className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">MikroTik Gateway {overview?.gateway || '192.168.20.1'}</p>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">MikroTik Gateway Overview</h1>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600">
               Ringkasan uplink, suhu router, kualitas koneksi, dan status port dalam tampilan yang lebih rapi untuk monitoring operasional harian.
             </p>
-            <div className="mt-5 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
               <InfoChip icon={RouterIcon} label={`${overview?.configuredInterfaceCount || 0} interface terkonfigurasi`} />
               <InfoChip icon={ShieldAlert} label={`${issueCount} interface perlu perhatian`} />
               <InfoChip icon={Thermometer} label={overview?.temperatureAvailable ? `Router ${overview.temperatureCelsius?.toFixed(1)} \u00B0C` : 'Metric suhu belum tersedia'} />
             </div>
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:min-w-[520px]">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:min-w-[560px]">
             <SummaryTile
               title="Download / Upload"
               value={overview ? `${compactMetricValue(overview.totalDownloadMbps, 'Mbps')} / ${compactMetricValue(overview.totalUploadMbps, 'Mbps')}` : 'Memuat'}
@@ -252,13 +250,13 @@ export default function MikrotikPage() {
               type="button"
               onClick={() => void handleDiscovery()}
               disabled={loadingDiscovery}
-              className="group rounded-2xl border border-slate-900 bg-slate-950 px-4 py-4 text-left text-white transition-colors hover:bg-slate-800 disabled:opacity-60"
+              className="rounded-lg border border-slate-200 bg-white px-4 py-4 text-left text-slate-900 transition-colors hover:bg-slate-50 disabled:opacity-60"
             >
-              <div className="flex items-center gap-2 text-sm font-semibold">
-                {loadingDiscovery ? <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" /> : <Search className="h-4 w-4" />}
+              <div className="flex items-center gap-2 text-sm font-medium">
+                {loadingDiscovery ? <span className="h-4 w-4 rounded-full border-2 border-slate-400 border-t-transparent animate-spin" /> : <Search className="h-4 w-4" />}
                 Discovery
               </div>
-              <p className="mt-2 text-xs leading-5 text-slate-300">
+              <p className="mt-2 text-xs leading-5 text-slate-500">
                 Pindai metric SNMP suhu, sistem, dan interface yang sudah masuk ke Prometheus.
               </p>
             </button>
@@ -308,26 +306,26 @@ export default function MikrotikPage() {
       )}
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.3fr_0.7fr]">
-        <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_16px_48px_rgba(15,23,42,0.05)]">
+        <div className="panel-surface rounded-lg p-5">
           <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
             <div>
-              <h2 className="text-xl font-semibold text-slate-950">Interface MikroTik Terkonfigurasi</h2>
+              <h2 className="text-base font-semibold text-slate-900">Interface MikroTik Terkonfigurasi</h2>
               <p className="mt-1 text-sm text-slate-500">
                 {overview?.configuredInterfaceCount || 0} interface terkonfigurasi / {overview?.liveInterfaceMetricCount || 0} interface dengan metric aktif.
               </p>
             </div>
-            <div className="rounded-2xl bg-slate-50 px-3 py-2 text-right">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Metric Belum Lengkap</p>
-              <p className="mt-1 text-sm font-medium text-slate-700">{(overview?.missingRequiredMetrics || []).join(', ') || 'Tidak ada'}</p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-right">
+              <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400">Metric Belum Lengkap</p>
+              <p className="mt-1 text-sm text-slate-700">{(overview?.missingRequiredMetrics || []).join(', ') || 'Tidak ada'}</p>
             </div>
           </div>
 
           <div className="grid gap-3 p-4 md:hidden">
             {interfaceGroups.focus.concat(interfaceGroups.access).map((item) => (
-              <article key={`${item.instance}-${item.name}`} className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <article key={`${item.instance}-${item.name}`} className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/70 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="break-all font-mono font-medium text-slate-950">{item.name}</p>
+                    <p className="break-all font-mono text-sm font-medium text-slate-900">{item.name}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{item.displayName}{item.comment ? ` / ${item.comment}` : ''}</p>
                   </div>
                   <StatusIndicator status={portStatus(item)} text={portStatusText(item)} />
@@ -378,7 +376,7 @@ export default function MikrotikPage() {
                 {(overview?.interfaces || []).map((item) => (
                   <tr key={`${item.instance}-${item.name}`} className="transition-colors hover:bg-slate-50/80">
                     <td className="px-6 py-4">
-                      <div className="font-mono font-medium text-slate-950">{item.name}</div>
+                      <div className="font-mono text-sm font-medium text-slate-900">{item.name}</div>
                       <div className="mt-1 text-xs text-muted-foreground">{item.displayName}{item.comment ? ` / ${item.comment}` : ''}</div>
                     </td>
                     <td className="px-6 py-4">
@@ -406,18 +404,18 @@ export default function MikrotikPage() {
           </div>
 
           {(overview?.missingRequiredMetrics || []).length > 0 && (
-            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
               SNMP scrape sudah terlihat, tetapi beberapa metric MikroTik belum lengkap. Pastikan modul SNMP mengeluarkan counter IF-MIB, status port, dan `sysUpTime`.
             </div>
           )}
         </div>
 
         <div className="space-y-6">
-          <aside className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_16px_48px_rgba(15,23,42,0.05)]">
+          <aside className="panel-surface rounded-lg p-5">
             <div className="flex items-center gap-3">
-              <div className="rounded-2xl bg-sky-50 p-2.5 text-sky-700"><Waves className="h-5 w-5" /></div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-slate-700"><Waves className="h-4 w-4" /></div>
               <div>
-                <h2 className="font-semibold text-slate-950">Snapshot Operasional</h2>
+                <h2 className="font-semibold text-slate-900">Snapshot Operasional</h2>
                 <p className="text-xs text-slate-500">Ringkasan cepat untuk operator.</p>
               </div>
             </div>
@@ -429,14 +427,14 @@ export default function MikrotikPage() {
             </div>
           </aside>
 
-          <aside className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_16px_48px_rgba(15,23,42,0.05)]">
-            <h2 className="font-semibold text-slate-950">Interface Prioritas</h2>
+          <aside className="panel-surface rounded-lg p-5">
+            <h2 className="font-semibold text-slate-900">Interface Prioritas</h2>
             <div className="mt-4 space-y-3">
               {interfaceGroups.focus.slice(0, 5).map((item) => (
-                <div key={item.name} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                <div key={item.name} className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="font-mono text-sm font-medium text-slate-950">{item.name}</p>
+                      <p className="font-mono text-sm font-medium text-slate-900">{item.name}</p>
                       <p className="mt-1 text-xs text-slate-500">{item.displayName}</p>
                     </div>
                     <StatusIndicator status={portStatus(item)} text={portStatusText(item)} />
@@ -453,21 +451,21 @@ export default function MikrotikPage() {
       </section>
 
       {data && (
-        <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_16px_48px_rgba(15,23,42,0.05)]">
-          <div className="border-b border-slate-100 bg-[linear-gradient(135deg,#fafcff_0%,#f5faff_100%)] px-6 py-5">
-            <h2 className="text-xl font-semibold text-slate-950">Hasil Discovery</h2>
+        <section className="panel-surface overflow-hidden rounded-lg">
+          <div className="border-b border-slate-100 bg-slate-50/70 px-6 py-4">
+            <h2 className="text-base font-semibold text-slate-900">Hasil Discovery</h2>
             <p className="mt-1 text-xs text-muted-foreground">
               {data.message} Total series: {data.totalSeries}. Diperiksa terakhir: {formatUpdatedTime(data.timestamp)}.
             </p>
           </div>
           <div className="grid gap-3 p-4 md:hidden">
             {data.metrics.map((metric) => (
-              <article key={metric.name} className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                <p className="break-all font-mono font-medium text-slate-950">{metric.name}</p>
+              <article key={metric.name} className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+                <p className="break-all font-mono text-sm font-medium text-slate-900">{metric.name}</p>
                 <div className="text-xs text-muted-foreground">
-                  <p><span className="font-semibold text-foreground">Jobs:</span> {metric.jobs.join(', ') || '-'}</p>
-                  <p className="break-all"><span className="font-semibold text-foreground">Instances:</span> {metric.instances.join(', ') || '-'}</p>
-                  <p className="break-all"><span className="font-semibold text-foreground">Sample:</span> {labelPreview(metric.sampleLabels)}</p>
+                  <p><span className="font-medium text-foreground">Jobs:</span> {metric.jobs.join(', ') || '-'}</p>
+                  <p className="break-all"><span className="font-medium text-foreground">Instances:</span> {metric.instances.join(', ') || '-'}</p>
+                  <p className="break-all"><span className="font-medium text-foreground">Sample:</span> {labelPreview(metric.sampleLabels)}</p>
                 </div>
               </article>
             ))}
@@ -488,7 +486,7 @@ export default function MikrotikPage() {
               <tbody className="divide-y divide-slate-100">
                 {data.metrics.map((metric) => (
                   <tr key={metric.name} className="transition-colors hover:bg-slate-50/80">
-                    <td className="px-6 py-4 font-mono font-medium text-slate-950">{metric.name}</td>
+                    <td className="px-6 py-4 font-mono text-sm font-medium text-slate-900">{metric.name}</td>
                     <td className="px-6 py-4 text-muted-foreground">{metric.jobs.join(', ') || '-'}</td>
                     <td className="px-6 py-4 font-mono text-muted-foreground">{metric.instances.join(', ') || '-'}</td>
                     <td className="max-w-xl truncate px-6 py-4 font-mono text-muted-foreground">{labelPreview(metric.sampleLabels)}</td>
@@ -512,9 +510,9 @@ export default function MikrotikPage() {
 
 function SummaryTile({ title, value, note }: { title: string; value: string; note: string }) {
   return (
-    <div className="rounded-2xl border border-white/70 bg-white/85 px-4 py-4 shadow-sm backdrop-blur">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{title}</p>
-      <p className="mt-2 text-lg font-semibold leading-7 text-slate-950">{value}</p>
+    <div className="rounded-lg border border-slate-200 bg-white px-4 py-4">
+      <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400">{title}</p>
+      <p className="mt-2 text-xl font-medium leading-7 text-slate-900">{value}</p>
       <p className="mt-2 text-xs leading-5 text-slate-500">{note}</p>
     </div>
   );
@@ -522,7 +520,7 @@ function SummaryTile({ title, value, note }: { title: string; value: string; not
 
 function InfoChip({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/80 px-3 py-2 text-xs font-medium text-slate-700 shadow-sm backdrop-blur">
+    <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
       <Icon className="h-3.5 w-3.5 text-slate-500" />
       {label}
     </span>
@@ -531,9 +529,9 @@ function InfoChip({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
 
 function QuickRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-3 text-sm">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
       <span className="text-slate-500">{label}</span>
-      <span className="text-right font-medium text-slate-900">{value}</span>
+      <span className="text-right text-slate-900">{value}</span>
     </div>
   );
 }
