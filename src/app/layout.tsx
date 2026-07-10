@@ -1,10 +1,16 @@
-﻿import type { Metadata } from 'next';
+import type { Metadata } from 'next';
 import './globals.css';
 import { AppShell } from '@/components/layout/app-shell';
+import { BRANDING } from '@/lib/branding';
 
 export const metadata: Metadata = {
-  title: 'Monitoring Server Ubuntu WIG',
+  title: BRANDING.appName,
   description: 'Internal Ubuntu server, network, and MikroTik monitoring dashboard',
+  icons: {
+    icon: BRANDING.logoSrc,
+    shortcut: BRANDING.logoSrc,
+    apple: BRANDING.logoSrc,
+  },
 };
 
 export default function RootLayout({

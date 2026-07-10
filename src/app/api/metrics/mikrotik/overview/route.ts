@@ -1,6 +1,6 @@
 ﻿import { type NextRequest } from 'next/server';
 import { prometheusInstantQuery } from '@/lib/prometheus';
-import { NETWORK_TARGETS, nowIso, roundMetric, valueAt } from '@/lib/metrics';
+import { metricMatchesTarget, NETWORK_TARGETS, nowIso, roundMetric, valueAt } from '@/lib/metrics';
 import { MIKROTIK_INTERFACES, type InterfaceRole } from '@/lib/monitoring-config';
 import { enforceMetricsRateLimit, noStoreJson } from '@/lib/rate-limit';
 import type { PrometheusData, PrometheusVectorResult } from '@/lib/types';
@@ -32,9 +32,7 @@ const SNMP_INTERFACE_SELECTOR = 'job="snmp_if_mib",instance="192.168.20.1"';
 
 function findGatewayValue(data: PrometheusData | null) {
   if (!data || data.resultType !== 'vector') return null;
-  const match = data.result.find((result) => (
-    result.metric.instance === NETWORK_TARGETS.gateway || result.metric.target === NETWORK_TARGETS.gateway
-  ));
+  const match = data.result.find((result) => metricMatchesTarget(result, NETWORK_TARGETS.gateway));
   return valueAt(match);
 }
 

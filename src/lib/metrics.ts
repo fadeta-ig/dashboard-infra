@@ -136,19 +136,21 @@ function bytesToMBps(bytesPerSec: number | null): number | null {
 
 export function getServerStatus(metrics: Omit<ServerMetrics, 'status'>): Status {
   const thresholds = getMonitoringThresholds().server;
-  const values = [metrics.cpuUsage, metrics.ramUsage, metrics.diskUsage];
+  const values = [metrics.cpuUsage, metrics.ramUsage, metrics.diskUsage, metrics.load1];
   if (values.some((value) => value === null)) return 'unknown';
   if (
     metrics.cpuUsage !== null && metrics.cpuUsage >= thresholds.cpuUsagePercent.critical ||
     metrics.ramUsage !== null && metrics.ramUsage >= thresholds.ramUsagePercent.critical ||
-    metrics.diskUsage !== null && metrics.diskUsage >= thresholds.diskUsagePercent.critical
+    metrics.diskUsage !== null && metrics.diskUsage >= thresholds.diskUsagePercent.critical ||
+    metrics.load1 !== null && metrics.load1 >= thresholds.load1.critical
   ) {
     return 'critical';
   }
   if (
     metrics.cpuUsage !== null && metrics.cpuUsage >= thresholds.cpuUsagePercent.warning ||
     metrics.ramUsage !== null && metrics.ramUsage >= thresholds.ramUsagePercent.warning ||
-    metrics.diskUsage !== null && metrics.diskUsage >= thresholds.diskUsagePercent.warning
+    metrics.diskUsage !== null && metrics.diskUsage >= thresholds.diskUsagePercent.warning ||
+    metrics.load1 !== null && metrics.load1 >= thresholds.load1.warning
   ) {
     return 'warning';
   }
@@ -325,7 +327,7 @@ function normalizeTargetLabel(value: string | undefined) {
     .replace(/:\d+$/, '');
 }
 
-function metricMatchesTarget(result: PrometheusVectorResult | PrometheusMatrixResult, target: string, aliases: string[] = []) {
+export function metricMatchesTarget(result: PrometheusVectorResult | PrometheusMatrixResult, target: string, aliases: string[] = []) {
   const expectedValues = [target, ...aliases]
     .map((value) => normalizeTargetLabel(value))
     .filter(Boolean);
@@ -433,30 +435,35 @@ export function alignServerRange(
   const netRxValues = netRxData?.resultType === 'matrix' ? netRxData.result[0]?.values || [] : [];
   const netTxValues = netTxData?.resultType === 'matrix' ? netTxData.result[0]?.values || [] : [];
 
-  return cpuValues.map(([timestamp, cpuRaw], index) => ({
+  const toValueMap = (values: [number, string][]) =>
+    new Map(values.map(([timestamp, rawValue]) => [timestamp, rawValue]));
+
+  const ramMap = toValueMap(ramValues);
+  const loadMap = toValueMap(loadValues);
+  const swapMap = toValueMap(swapValues);
+  const diskReadMap = toValueMap(diskReadValues);
+  const diskWriteMap = toValueMap(diskWriteValues);
+  const netRxMap = toValueMap(netRxValues);
+  const netTxMap = toValueMap(netTxValues);
+
+  const parseMappedValue = (map: Map<number, string>, timestamp: number) => {
+    const rawValue = map.get(timestamp);
+    if (rawValue === undefined) return null;
+    const parsed = Number.parseFloat(rawValue);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  return cpuValues.map(([timestamp, cpuRaw]) => ({
     timestamp: timestamp * 1000,
     cpu: roundMetric(Number.parseFloat(cpuRaw), 2),
-    ram: ramValues[index]?.[1] ? roundMetric(Number.parseFloat(ramValues[index][1]), 2) : null,
-    load: loadValues[index]?.[1] ? roundMetric(Number.parseFloat(loadValues[index][1]), 2) : null,
-    swap: swapValues[index]?.[1] ? roundMetric(Number.parseFloat(swapValues[index][1]), 2) : null,
-    diskReadMBps: diskReadValues[index]?.[1]
-      ? bytesToMBps(Number.parseFloat(diskReadValues[index][1]))
-      : null,
-    diskWriteMBps: diskWriteValues[index]?.[1]
-      ? bytesToMBps(Number.parseFloat(diskWriteValues[index][1]))
-      : null,
-    netRxMBps: netRxValues[index]?.[1]
-      ? bytesToMBps(Number.parseFloat(netRxValues[index][1]))
-      : null,
-    netTxMBps: netTxValues[index]?.[1]
-      ? bytesToMBps(Number.parseFloat(netTxValues[index][1]))
-      : null,
+    ram: roundMetric(parseMappedValue(ramMap, timestamp), 2),
+    load: roundMetric(parseMappedValue(loadMap, timestamp), 2),
+    swap: roundMetric(parseMappedValue(swapMap, timestamp), 2),
+    diskReadMBps: bytesToMBps(parseMappedValue(diskReadMap, timestamp)),
+    diskWriteMBps: bytesToMBps(parseMappedValue(diskWriteMap, timestamp)),
+    netRxMBps: bytesToMBps(parseMappedValue(netRxMap, timestamp)),
+    netTxMBps: bytesToMBps(parseMappedValue(netTxMap, timestamp)),
   }));
-}
-
-function findMatrixForTarget(data: PrometheusData | null, target: string) {
-  if (!data || data.resultType !== 'matrix') return undefined;
-  return data.result.find((result) => metricMatchesTarget(result, target));
 }
 
 export function alignNetworkRange(latencyData: PrometheusData | null): NetworkRangePoint[] {
@@ -495,7 +502,7 @@ export function alignNetworkRange(latencyData: PrometheusData | null): NetworkRa
   }
 
   return sortedTimestamps.map((timestamp) => {
-    const point: Record<string, any> = { timestamp: timestamp * 1000 };
+    const point: NetworkRangePoint = { timestamp: timestamp * 1000 };
     for (const [targetKey, values] of targetValues.entries()) {
       let pointer = targetPointers.get(targetKey) || 0;
       
@@ -513,7 +520,7 @@ export function alignNetworkRange(latencyData: PrometheusData | null): NetworkRa
       
       targetPointers.set(targetKey, pointer);
     }
-    return point as NetworkRangePoint;
+    return point;
   });
 }
 

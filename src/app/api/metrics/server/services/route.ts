@@ -36,6 +36,18 @@ function collectAvailableUnits(rows: PrometheusVectorResult[]) {
     .sort((left, right) => left.unit.localeCompare(right.unit));
 }
 
+function collectMatchedUnits(rows: PrometheusVectorResult[]) {
+  return UBUNTU_SERVICES.flatMap((service) => {
+    const match = findCurrentServiceState(rows, service.matcher);
+    if (!match) return [];
+
+    return [{
+      unit: unitName(match),
+      state: match.metric.state || 'unknown',
+    }];
+  }).sort((left, right) => left.unit.localeCompare(right.unit));
+}
+
 export async function GET(request: NextRequest) {
   const limited = enforceMetricsRateLimit(request);
   if (limited) return limited;
@@ -50,6 +62,7 @@ export async function GET(request: NextRequest) {
   );
   const currentRows = activeStateRows(serviceData);
   const availableUnits = collectAvailableUnits(currentRows);
+  const matchedUnits = collectMatchedUnits(currentRows);
 
   const services = UBUNTU_SERVICES.map((service) => {
     const match = findCurrentServiceState(currentRows, service.matcher);
@@ -75,7 +88,7 @@ export async function GET(request: NextRequest) {
   return noStoreJson({
     collector: 'node_systemd_unit_state',
     collectorAvailable,
-    matchedUnitCount: availableUnits.length,
+    matchedUnitCount: matchedUnits.length,
     availableUnits: availableUnits.slice(0, 30),
     missingRequired,
     services: visibleServices,

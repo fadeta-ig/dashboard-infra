@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Activity, CheckCircle2, Clock, Cpu, Database, HardDrive, MemoryStick, Network, XCircle } from 'lucide-react';
+import { CheckCircle2, Cpu, Database, HardDrive, MemoryStick, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { SummaryResponse, ServerMetrics } from '@/lib/types';

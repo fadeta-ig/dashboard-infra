@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, useMemo } from 'react';
-import { Activity, Camera, Fingerprint, Globe, Phone, RouterIcon, Server, Check, type LucideIcon } from 'lucide-react';
+import { Activity, Camera, Fingerprint, Globe, Phone, RouterIcon, Server, type LucideIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';

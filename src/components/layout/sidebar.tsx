@@ -1,10 +1,12 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { Activity, BookOpen, ChevronLeft, ChevronRight, LogOut, Network, RouterIcon, Server, Target } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebar } from '@/components/layout/sidebar-context';
+import { BRANDING } from '@/lib/branding';
 
 const navItems = [
   { name: 'Summary Dashboard', href: '/', icon: Activity },
@@ -43,8 +45,15 @@ export function Sidebar() {
 
       {/* Brand Header */}
       <div className="h-16 flex items-center px-5 border-b border-slate-100 shrink-0">
-        <div className="h-7 w-7 shrink-0 rounded bg-black text-white flex items-center justify-center">
-          <Activity className="h-4 w-4" />
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded border border-slate-200 bg-white">
+          <Image
+            src={BRANDING.logoSrc}
+            alt={BRANDING.logoAlt}
+            width={32}
+            height={32}
+            className="h-full w-full object-contain"
+            priority
+          />
         </div>
         <div 
           className={cn(
@@ -53,7 +62,7 @@ export function Sidebar() {
           )}
         >
           <span className="block font-semibold text-sm text-slate-900 leading-tight">Monitoring</span>
-          <span className="block text-[11px] font-medium text-slate-500">Ubuntu WIG</span>
+          <span className="block text-[11px] font-medium text-slate-500">{BRANDING.shortName}</span>
         </div>
       </div>
 

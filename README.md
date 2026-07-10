@@ -338,8 +338,8 @@ Jika Next.js listen di `127.0.0.1:3000`, port `3000` juga tidak perlu dibuka pub
 Mapping fase 1 sudah memakai data operasional berikut:
 
 - MikroTik gateway: `192.168.20.1`.
-- ISP 1 Indihome: `ether1-INDIHOME` sebagai monitor fisik dan `pppoe-out1` sebagai sumber total WAN, kapasitas 150 Mbps download / 50 Mbps upload.
-- ISP 2 Citranet: `ether2`, kapasitas 200 Mbps download / 200 Mbps upload.
+- ISP 1 Indihome: `ether1-INDIHOME`, kapasitas 150 Mbps download / 50 Mbps upload.
+- ISP 2 Citranet: `pppoe-out1` sebagai sumber total WAN dan `ether2` sebagai monitor fisik, kapasitas 200 Mbps download / 200 Mbps upload.
 - LAN trunk: `ether3`.
 - VLAN aktif: `10-Jaringan`, `20-VoIP`, `30-CCTV`.
 - VPN: `<l2tp-user-plant2>`.
@@ -351,7 +351,7 @@ Catatan MikroTik: IF-MIB sudah bisa dibaca jika Prometheus memiliki `ifHCInOctet
 
 - Aktifkan Node Exporter systemd collector agar `node_systemd_unit_state` tersedia untuk service health. Contoh flag: `--collector.systemd --collector.systemd.unit-include='(nginx|apache2?|php.*fpm|mysql|mariadb|node|pm2|ssh|sshd).*\.service'`.
 - Validasi modul SNMP Exporter `if_mib` dan `switch_ports` agar mengeluarkan IF-MIB counter/status, bukan hanya `snmp_scrape_*`.
-- Tentukan sumber traffic ISP 1 yang akan dipakai sebagai angka utama, apakah logical `pppoe-out1` atau physical `ether1-INDIHOME`, supaya tidak double-count.
+- Validasi bahwa sumber traffic WAN tetap memakai logical `pppoe-out1` untuk Citranet dan physical `ether1-INDIHOME` untuk Indihome, supaya tidak double-count.
 - Lengkapi target tambahan untuk DNS lokal, HTTP/HTTPS probe domain kantor, switch/AP utama, dan NVR/CCTV.
 - Setelah IF-MIB tersedia, fase berikutnya bisa menambahkan top interface traffic, error/drop, port status real-time, dan alert utilization.
 
