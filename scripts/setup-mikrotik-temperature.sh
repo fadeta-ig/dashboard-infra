@@ -5,10 +5,23 @@ MIKROTIK_INSTANCE="${MIKROTIK_INSTANCE:-192.168.20.1}"
 PROMETHEUS_RULES_DIR="${PROMETHEUS_RULES_DIR:-/etc/prometheus/rules}"
 RULE_FILE="${PROMETHEUS_RULES_DIR}/mikrotik-temperature.rules.yml"
 PROMETHEUS_RELOAD_URL="${PROMETHEUS_RELOAD_URL:-http://127.0.0.1:9090/-/reload}"
+SUDO_BIN=""
 
-mkdir -p "${PROMETHEUS_RULES_DIR}"
+if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
+  SUDO_BIN="sudo"
+fi
 
-cat > "${RULE_FILE}" <<EOF
+write_rule_file() {
+  if [ -n "${SUDO_BIN}" ]; then
+    ${SUDO_BIN} mkdir -p "${PROMETHEUS_RULES_DIR}"
+    ${SUDO_BIN} tee "${RULE_FILE}" >/dev/null
+  else
+    mkdir -p "${PROMETHEUS_RULES_DIR}"
+    cat > "${RULE_FILE}"
+  fi
+}
+
+write_rule_file <<EOF
 groups:
   - name: mikrotik-temperature
     interval: 30s
@@ -32,9 +45,10 @@ echo "  - /etc/prometheus/rules/*.yml"
 echo
 echo "Reload Prometheus:"
 echo "  curl -X POST ${PROMETHEUS_RELOAD_URL}"
+echo "  Jika muncul 'Lifecycle API is not enabled', reload service Prometheus via systemd atau aktifkan --web.enable-lifecycle."
 echo
 echo "Verifikasi metric suhu setelah reload:"
-echo "  curl -s 'http://127.0.0.1:9090/api/v1/query?query=mikrotik_temperature_celsius{instance=\"${MIKROTIK_INSTANCE}\"}'"
+echo "  curl -g -s 'http://127.0.0.1:9090/api/v1/query?query=mikrotik_temperature_celsius{instance=\"${MIKROTIK_INSTANCE}\"}'"
 echo
 echo "Jika hasil masih kosong, berarti SNMP exporter belum mengeluarkan metric suhu dari MikroTik."
 echo "Lanjutkan cek metric mentah yang mengandung temp/thermal:"
