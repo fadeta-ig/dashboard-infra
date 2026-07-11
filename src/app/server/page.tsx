@@ -42,6 +42,7 @@ interface ServicesResponse {
 }
 
 interface Pm2ProcessHealth {
+  source: string;
   name: string;
   pmId: number | null;
   pid: number | null;
@@ -63,6 +64,7 @@ interface Pm2HealthResponse {
   requiredApps: string[];
   requiredDown: string[];
   processes: Pm2ProcessHealth[];
+  sources: Array<{ label: string; available: boolean; error: string | null }>;
   error: string | null;
   timestamp: string;
 }
@@ -94,7 +96,7 @@ function collectorStatus(services: ServicesResponse | null): 'healthy' | 'warnin
 
 function pm2Text(pm2: Pm2HealthResponse | null) {
   if (!pm2) return 'Checking';
-  if (!pm2.available) return 'PM2 unavailable';
+  if (!pm2.available) return 'All PM2 sources unavailable';
   if (pm2.requiredDown.length > 0) return `${pm2.requiredDown.length} required down`;
   return 'PM2 ready';
 }
@@ -279,6 +281,7 @@ export default function ServerPage() {
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-border bg-muted/50 text-xs uppercase text-muted-foreground">
                   <tr>
+                    <th className="px-6 py-4 font-medium">Source</th>
                     <th className="px-6 py-4 font-medium">App</th>
                     <th className="px-6 py-4 font-medium">Status</th>
                     <th className="px-6 py-4 font-medium">PM2 ID / PID</th>
@@ -291,7 +294,8 @@ export default function ServerPage() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {(pm2?.processes || []).map((process) => (
-                    <tr key={`${process.name}:${process.pmId ?? 'missing'}`} className="transition-colors hover:bg-muted/50">
+                    <tr key={`${process.source}:${process.name}:${process.pmId ?? 'missing'}`} className="transition-colors hover:bg-muted/50">
+                      <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{process.source}</td>
                       <td className="px-6 py-4 font-medium">{process.name}</td>
                       <td className="px-6 py-4">
                         <StatusIndicator status={process.active ? 'healthy' : 'critical'} text={process.status} />
@@ -308,7 +312,7 @@ export default function ServerPage() {
                   ))}
                   {pm2?.available && pm2.processes.length === 0 && (
                     <tr>
-                      <td className="px-6 py-8 text-center text-muted-foreground" colSpan={8}>Tidak ada proses PM2.</td>
+                      <td className="px-6 py-8 text-center text-muted-foreground" colSpan={9}>Tidak ada proses PM2.</td>
                     </tr>
                   )}
                 </tbody>
@@ -316,7 +320,12 @@ export default function ServerPage() {
             </div>
             {pm2 && !pm2.available && (
               <div className="border-t border-border bg-amber-50 px-6 py-4 text-sm text-amber-800">
-                PM2 belum bisa dibaca dari proses dashboard. Cek <code>PM2_BIN</code>, <code>PM2_HOME</code>, dan user PM2 yang menjalankan app. Detail: {pm2.error}
+                PM2 belum bisa dibaca dari semua source. Cek <code>PM2_BIN</code>, <code>PM2_HOME</code>, file snapshot root, dan permission. Detail: {pm2.error}
+              </div>
+            )}
+            {pm2?.available && pm2.sources.some((source) => !source.available) && (
+              <div className="border-t border-border bg-amber-50 px-6 py-4 text-sm text-amber-800">
+                Sebagian source PM2 gagal dibaca: {pm2.sources.filter((source) => !source.available).map((source) => `${source.label}: ${source.error}`).join('; ')}
               </div>
             )}
             {pm2?.available && pm2.requiredDown.length > 0 && (

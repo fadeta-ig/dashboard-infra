@@ -476,8 +476,10 @@ function buildServiceStateMap(snapshot: Awaited<ReturnType<typeof getServiceHeal
 function buildPm2StateMap(snapshot: Awaited<ReturnType<typeof getPm2HealthSnapshot>>) {
   return Object.fromEntries(
     snapshot.processes.map((app) => [
-      app.name,
+      `${app.source}:${app.name}`,
       {
+        source: app.source,
+        name: app.name,
         status: app.status,
         active: app.active,
         pid: app.pid,
@@ -985,13 +987,14 @@ function buildPm2IncidentCandidates(snapshot: Awaited<ReturnType<typeof collectC
         active: !app.active,
         source: 'pm2',
         domainKey: 'server',
-        incidentKey: `pm2:${app.name}`,
-        title: `PM2 app ${app.name} tidak online`,
+        incidentKey: `pm2:${app.source}:${app.name}`,
+        title: `PM2 app ${app.source}/${app.name} tidak online`,
         severity: 'critical' as const,
         entityType: 'pm2_process',
-        entityKey: app.name,
-        entityLabel: app.name,
+        entityKey: `${app.source}:${app.name}`,
+        entityLabel: `${app.source}/${app.name}`,
         metadata: {
+          source: app.source,
           status: app.status,
           pmId: app.pmId,
           pid: app.pid,
@@ -1310,11 +1313,11 @@ export async function runHistoryCollection() {
   }
   await setStoredState('services:collector', currentCollectorState);
 
-  const previousPm2State = await getStoredState<Record<string, { status: string; active: boolean; pid: number | null; restartCount: number | null; required: boolean }>>('pm2:health');
+  const previousPm2State = await getStoredState<Record<string, { source: string; name: string; status: string; active: boolean; pid: number | null; restartCount: number | null; required: boolean }>>('pm2:health');
   const currentPm2State = buildPm2StateMap(snapshot.pm2);
   if (previousPm2State) {
-    for (const [appName, current] of Object.entries(currentPm2State)) {
-      const previous = previousPm2State[appName];
+    for (const [appKey, current] of Object.entries(currentPm2State)) {
+      const previous = previousPm2State[appKey];
       if (!previous) continue;
       if (
         previous.status !== current.status ||
@@ -1326,9 +1329,9 @@ export async function runHistoryCollection() {
           eventType: 'pm2_state_changed',
           source: 'pm2',
           severity: current.required && !current.active ? 'critical' : 'info',
-          entityKey: `pm2:${appName}`,
-          entityLabel: appName,
-          message: `Status PM2 ${appName} berubah dari ${previous.status || 'unknown'} ke ${current.status || 'unknown'}.`,
+          entityKey: `pm2:${appKey}`,
+          entityLabel: `${current.source}/${current.name}`,
+          message: `Status PM2 ${current.source}/${current.name} berubah dari ${previous.status || 'unknown'} ke ${current.status || 'unknown'}.`,
           payload: { previous, current },
           eventAtIso: snapshot.timestamp,
         });

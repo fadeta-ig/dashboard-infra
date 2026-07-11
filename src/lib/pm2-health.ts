@@ -1,9 +1,11 @@
 import { execFile } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_REQUIRED_APPS = ['dashboard-infra', 'dashboard-history-collector'];
 const PM2_TIMEOUT_MS = 4000;
+const DEFAULT_SOURCE = 'server-wig';
 
 interface Pm2JlistItem {
   name?: string;
@@ -26,6 +28,7 @@ interface Pm2JlistItem {
 }
 
 export interface Pm2ProcessHealth {
+  source: string;
   name: string;
   pmId: number | null;
   pid: number | null;
@@ -47,6 +50,7 @@ export interface Pm2HealthSnapshot {
   requiredApps: string[];
   requiredDown: string[];
   processes: Pm2ProcessHealth[];
+  sources: Array<{ label: string; available: boolean; error: string | null }>;
   error: string | null;
   timestamp: string;
 }
@@ -62,22 +66,39 @@ function pm2Binary() {
   return process.env.PM2_BIN?.trim() || 'pm2';
 }
 
+function sourceLabel() {
+  return process.env.PM2_SOURCE_LABEL?.trim() || process.env.USER?.trim() || DEFAULT_SOURCE;
+}
+
 function toNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-function mapProcess(item: Pm2JlistItem, requiredApps: string[]): Pm2ProcessHealth {
+function processKey(source: string, name: string) {
+  return `${source}:${name}`;
+}
+
+function isRequiredProcess(requiredApps: string[], source: string, name: string) {
+  return requiredApps.includes(name) || requiredApps.includes(processKey(source, name));
+}
+
+function isIgnoredProcess(ignoredApps: string[], source: string, name: string) {
+  return ignoredApps.includes(name) || ignoredApps.includes(processKey(source, name));
+}
+
+function mapProcess(item: Pm2JlistItem, requiredApps: string[], source: string): Pm2ProcessHealth {
   const name = item.name || `pm2-${item.pm_id ?? 'unknown'}`;
   const status = item.pm2_env?.status || 'unknown';
   const uptimeStartedAt = toNumber(item.pm2_env?.pm_uptime);
   const uptimeMs = uptimeStartedAt === null ? null : Math.max(0, Date.now() - uptimeStartedAt);
   return {
+    source,
     name,
     pmId: toNumber(item.pm_id),
     pid: toNumber(item.pid),
     status,
     active: status === 'online',
-    required: requiredApps.includes(name),
+    required: isRequiredProcess(requiredApps, source, name),
     cpuPercent: toNumber(item.monit?.cpu),
     memoryBytes: toNumber(item.monit?.memory),
     restartCount: toNumber(item.pm2_env?.restart_time),
@@ -88,11 +109,32 @@ function mapProcess(item: Pm2JlistItem, requiredApps: string[]): Pm2ProcessHealt
   };
 }
 
-function appendMissingRequired(processes: Pm2ProcessHealth[], requiredApps: string[]) {
-  const existing = new Set(processes.map((item) => item.name));
-  for (const appName of requiredApps) {
-    if (existing.has(appName)) continue;
+function parseExtraJlistFiles() {
+  const raw = process.env.PM2_EXTRA_JLIST_FILES?.trim();
+  if (!raw) return [] as Array<{ label: string; path: string }>;
+  return raw
+    .split(',')
+    .map((entry) => {
+      const index = entry.indexOf(':');
+      if (index <= 0) return null;
+      const label = entry.slice(0, index).trim();
+      const path = entry.slice(index + 1).trim();
+      return label && path ? { label, path } : null;
+    })
+    .filter((entry): entry is { label: string; path: string } => Boolean(entry));
+}
+
+function appendMissingRequired(processes: Pm2ProcessHealth[], requiredApps: string[], defaultSource: string) {
+  const existingNames = new Set(processes.map((item) => item.name));
+  const existingKeys = new Set(processes.map((item) => processKey(item.source, item.name)));
+  for (const requiredName of requiredApps) {
+    const separatorIndex = requiredName.indexOf(':');
+    const source = separatorIndex > 0 ? requiredName.slice(0, separatorIndex) : defaultSource;
+    const appName = separatorIndex > 0 ? requiredName.slice(separatorIndex + 1) : requiredName;
+    const exists = separatorIndex > 0 ? existingKeys.has(requiredName) : existingNames.has(appName);
+    if (exists) continue;
     processes.push({
+      source,
       name: appName,
       pmId: null,
       pid: null,
@@ -110,39 +152,80 @@ function appendMissingRequired(processes: Pm2ProcessHealth[], requiredApps: stri
   }
 }
 
+async function readCurrentSource(requiredApps: string[], label: string) {
+  const { stdout } = await execFileAsync(pm2Binary(), ['jlist'], {
+    timeout: PM2_TIMEOUT_MS,
+    maxBuffer: 1024 * 1024,
+    env: process.env,
+  });
+  const parsed = JSON.parse(stdout) as Pm2JlistItem[];
+  return parsed.map((item) => mapProcess(item, requiredApps, label));
+}
+
+async function readFileSource(requiredApps: string[], label: string, path: string) {
+  const content = await readFile(path, 'utf8');
+  const parsed = JSON.parse(content) as Pm2JlistItem[];
+  return parsed.map((item) => mapProcess(item, requiredApps, label));
+}
+
 export async function getPm2HealthSnapshot(): Promise<Pm2HealthSnapshot> {
   const requiredApps = readCsvEnv('PM2_REQUIRED_APPS', DEFAULT_REQUIRED_APPS);
-  try {
-    const { stdout } = await execFileAsync(pm2Binary(), ['jlist'], {
-      timeout: PM2_TIMEOUT_MS,
-      maxBuffer: 1024 * 1024,
-      env: process.env,
-    });
-    const parsed = JSON.parse(stdout) as Pm2JlistItem[];
-    const processes = parsed.map((item) => mapProcess(item, requiredApps));
-    appendMissingRequired(processes, requiredApps);
-    processes.sort((left, right) => Number(right.required) - Number(left.required) || left.name.localeCompare(right.name));
-    const requiredDown = processes.filter((item) => item.required && !item.active).map((item) => item.name);
-    const status = requiredDown.length > 0 ? 'critical' : processes.length === 0 ? 'warning' : 'healthy';
+  const ignoredApps = readCsvEnv('PM2_IGNORED_APPS', []);
+  const primarySource = sourceLabel();
+  const sources: Array<{ label: string; available: boolean; error: string | null }> = [];
+  const processes: Pm2ProcessHealth[] = [];
 
-    return {
-      available: true,
-      status,
-      requiredApps,
-      requiredDown,
-      processes,
-      error: null,
-      timestamp: new Date().toISOString(),
-    };
+  try {
+    processes.push(...await readCurrentSource(requiredApps, primarySource));
+    sources.push({ label: primarySource, available: true, error: null });
   } catch (error) {
-    return {
+    sources.push({
+      label: primarySource,
       available: false,
-      status: 'unknown',
-      requiredApps,
-      requiredDown: [],
-      processes: [],
       error: error instanceof Error ? error.message : 'Unable to read PM2 process list',
-      timestamp: new Date().toISOString(),
-    };
+    });
   }
+
+  for (const source of parseExtraJlistFiles()) {
+    try {
+      processes.push(...await readFileSource(requiredApps, source.label, source.path));
+      sources.push({ label: source.label, available: true, error: null });
+    } catch (error) {
+      sources.push({
+        label: source.label,
+        available: false,
+        error: error instanceof Error ? error.message : `Unable to read ${source.path}`,
+      });
+    }
+  }
+
+  const visibleProcesses = processes.filter((item) => !isIgnoredProcess(ignoredApps, item.source, item.name));
+  const effectiveRequiredApps = requiredApps.filter((appName) => {
+    const separatorIndex = appName.indexOf(':');
+    const source = separatorIndex > 0 ? appName.slice(0, separatorIndex) : primarySource;
+    const name = separatorIndex > 0 ? appName.slice(separatorIndex + 1) : appName;
+    return !isIgnoredProcess(ignoredApps, source, name);
+  });
+
+  appendMissingRequired(visibleProcesses, effectiveRequiredApps, primarySource);
+  visibleProcesses.sort((left, right) => (
+    Number(right.required) - Number(left.required) ||
+    left.source.localeCompare(right.source) ||
+    left.name.localeCompare(right.name)
+  ));
+  const requiredDown = visibleProcesses.filter((item) => item.required && !item.active).map((item) => processKey(item.source, item.name));
+  const available = sources.some((source) => source.available);
+  const status = requiredDown.length > 0 ? 'critical' : !available ? 'unknown' : visibleProcesses.length === 0 ? 'warning' : 'healthy';
+  const sourceErrors = sources.filter((source) => !source.available).map((source) => `${source.label}: ${source.error}`);
+
+  return {
+    available,
+    status,
+    requiredApps: effectiveRequiredApps,
+    requiredDown,
+    processes: visibleProcesses,
+    sources,
+    error: sourceErrors.length > 0 ? sourceErrors.join('; ') : null,
+    timestamp: new Date().toISOString(),
+  };
 }

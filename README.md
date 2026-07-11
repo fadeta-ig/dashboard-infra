@@ -151,7 +151,7 @@ curl -s 'http://127.0.0.1:9100/metrics' | grep 'node_systemd_unit_state' | egrep
 
 ## PM2 Process Health
 
-Halaman `/server` membaca `pm2 jlist` dari proses dashboard untuk menampilkan aplikasi PM2, status online, PID, CPU, memory, restart count, dan uptime.
+Halaman `/server` membaca `pm2 jlist` dari proses dashboard untuk menampilkan aplikasi PM2, status online, PID, CPU, memory, restart count, dan uptime. PM2 bersifat per-user; PM2 milik `root` tidak otomatis terlihat oleh dashboard yang berjalan sebagai user `server-wig`.
 
 Default required app:
 
@@ -164,6 +164,43 @@ Jika ada aplikasi lain yang wajib aktif, misalnya `ktia`, tambahkan di `.env`:
 ```bash
 PM2_REQUIRED_APPS=dashboard-infra,dashboard-history-collector,ktia
 ```
+
+Jika ada aplikasi PM2 yang tidak ingin ditampilkan dan tidak ingin dimonitor, gunakan:
+
+```bash
+PM2_IGNORED_APPS=ktia
+```
+
+Untuk source tertentu:
+
+```bash
+PM2_IGNORED_APPS=server-wig:ktia
+```
+
+Untuk membaca PM2 milik `root`, buat snapshot JSON yang bisa dibaca user dashboard:
+
+```bash
+sudo mkdir -p /var/lib/dashboard-infra
+sudo sh -c 'PM2_HOME=/root/.pm2 /usr/bin/pm2 jlist > /var/lib/dashboard-infra/root-pm2-jlist.json'
+sudo chown server-wig:server-wig /var/lib/dashboard-infra/root-pm2-jlist.json
+sudo chmod 640 /var/lib/dashboard-infra/root-pm2-jlist.json
+```
+
+Tambahkan cron root agar snapshot diperbarui setiap menit:
+
+```cron
+* * * * * PM2_HOME=/root/.pm2 /usr/bin/pm2 jlist > /var/lib/dashboard-infra/root-pm2-jlist.json && chown server-wig:server-wig /var/lib/dashboard-infra/root-pm2-jlist.json && chmod 640 /var/lib/dashboard-infra/root-pm2-jlist.json
+```
+
+Lalu set `.env` dashboard:
+
+```bash
+PM2_SOURCE_LABEL=server-wig
+PM2_EXTRA_JLIST_FILES=root:/var/lib/dashboard-infra/root-pm2-jlist.json
+PM2_REQUIRED_APPS=dashboard-infra,dashboard-history-collector,root:formwig,root:hris,root:scan-resi-wig,root:theformulator,root:undangan-wig,root:wig-dashboard,root:wig-display-backend,root:wig-music-backend,root:wig-music-frontend
+```
+
+Gunakan format `source:nama-app` untuk required app dari source tambahan. Pastikan nama app tidak terpotong; ambil nama lengkap dari `pm2 jlist` JSON jika tabel terminal menampilkan `...`.
 
 Jika binary PM2 tidak ada di `PATH` proses Node, set path eksplisit:
 
