@@ -41,15 +41,17 @@ function normalizePrometheusUrl() {
 async function fetchPrometheusData<T>(url: URL, validator: (value: unknown) => value is T): Promise<T | null> {
   try {
     const response = await fetchWithTimeout(url.toString());
+    const queryLabel = url.searchParams.get('query') || url.searchParams.getAll('match[]').join(', ');
 
     if (!response.ok) {
-      throw new Error(`Prometheus API returned HTTP ${response.status}`);
+      const body = await response.text().catch(() => '');
+      throw new Error(`Prometheus API returned HTTP ${response.status}. query="${queryLabel}" body="${body.slice(0, 500)}"`);
     }
 
     const payload = (await response.json()) as PrometheusApiResponse<T>;
 
     if (payload.status !== 'success' || !validator(payload.data)) {
-      throw new Error(payload.errorType || 'Invalid Prometheus response');
+      throw new Error(`Invalid Prometheus response. query="${queryLabel}" errorType="${payload.errorType || ''}" error="${payload.error || ''}"`);
     }
 
     return payload.data;

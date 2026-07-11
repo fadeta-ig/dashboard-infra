@@ -4,6 +4,20 @@ import path from 'node:path';
 
 const DEFAULT_RETENTION_DAYS = 14;
 
+function loadDotEnv() {
+  if (!fs.existsSync('.env')) return;
+  const content = fs.readFileSync('.env', 'utf8');
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const index = trimmed.indexOf('=');
+    if (index === -1) continue;
+    const key = trimmed.slice(0, index).trim();
+    const value = trimmed.slice(index + 1).trim();
+    if (key && process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
 function readEnv(name, fallback = '') {
   return (process.env[name] || fallback).trim();
 }
@@ -33,6 +47,7 @@ function run(command, args, options = {}) {
 }
 
 async function main() {
+  loadDotEnv();
   const database = readEnv('MYSQL_DATABASE', 'infra');
   const host = readEnv('MYSQL_HOST', '127.0.0.1');
   const port = readEnv('MYSQL_PORT', '3306');
@@ -46,15 +61,22 @@ async function main() {
   const output = fs.createWriteStream(outputPath, { flags: 'wx' });
   const outputFinished = waitForStream(output);
   const args = [`--host=${host}`, `--port=${port}`, `--user=${user}`, '--single-transaction', '--routines', '--triggers', database];
+  let dumpError = null;
   try {
     await run('mysqldump', args, {
       env: { ...process.env, MYSQL_PWD: password },
       stdout: output,
     });
+  } catch (error) {
+    dumpError = error;
   } finally {
     output.end();
   }
   await outputFinished;
+  if (dumpError) {
+    fs.rmSync(outputPath, { force: true });
+    throw dumpError;
+  }
 
   if (Number.isFinite(retentionDays) && retentionDays > 0) {
     const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
