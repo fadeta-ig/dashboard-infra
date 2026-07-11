@@ -7,6 +7,7 @@ import { prometheusInstantQuery, prometheusRangeQuery } from '@/lib/prometheus';
 import { getReadinessSnapshot } from '@/lib/readiness';
 import { getServiceHealthSnapshot } from '@/lib/service-health';
 import { getMonitoringThresholds, thresholdStatus } from '@/lib/thresholds';
+import { paginationMeta, paginationOffset, type PaginationMeta } from '@/lib/pagination';
 import { mysqlDateTimeToIsoString as toIsoString, toMysqlDateTime, utcDateKey as toDateKey } from '@/lib/time';
 
 export type IncidentSeverity = 'warning' | 'critical';
@@ -80,6 +81,31 @@ export interface AlertDeliveryRecord {
   deliveredAt: string | null;
   payload: Record<string, unknown>;
   createdAt: string;
+}
+
+export interface IncidentListSummary {
+  total: number;
+  open: number;
+  resolved: number;
+}
+
+export interface IncidentListResult {
+  incidents: IncidentRecord[];
+  pagination: PaginationMeta;
+  summary: IncidentListSummary;
+}
+
+export interface AuditListSummary {
+  total: number;
+  info: number;
+  warning: number;
+  critical: number;
+}
+
+export interface AuditListResult {
+  events: AuditEventRecord[];
+  pagination: PaginationMeta;
+  summary: AuditListSummary;
 }
 
 const SCHEMA_STATEMENTS = [
@@ -1246,9 +1272,93 @@ export async function runHistoryCollection() {
   };
 }
 
-export async function listIncidents(limit = 100) {
+function normalizeStatusFilter(status: string | null | undefined): IncidentStatus | null {
+  return status === 'open' || status === 'resolved' ? status : null;
+}
+
+function normalizeAuditSeverityFilter(severity: string | null | undefined): AuditSeverity | null {
+  return severity === 'info' || severity === 'warning' || severity === 'critical' ? severity : null;
+}
+
+function mapIncidentRow(row: RowDataPacket & {
+  id: number;
+  source: string;
+  domain_key: string;
+  incident_key: string;
+  title: string;
+  status: IncidentStatus;
+  severity: IncidentSeverity;
+  entity_type: string;
+  entity_key: string;
+  entity_label: string;
+  started_at: Date | string;
+  resolved_at: Date | string | null;
+  duration_seconds: number | null;
+  acknowledged_at: Date | string | null;
+  acknowledged_by: string | null;
+  acknowledgement_note: string | null;
+  metadata_json: string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+}) {
+  return {
+    id: row.id,
+    source: row.source,
+    domainKey: row.domain_key,
+    incidentKey: row.incident_key,
+    title: row.title,
+    status: row.status,
+    severity: row.severity,
+    entityType: row.entity_type,
+    entityKey: row.entity_key,
+    entityLabel: row.entity_label,
+    startedAt: toIsoString(row.started_at) as string,
+    resolvedAt: toIsoString(row.resolved_at) as string | null,
+    durationSeconds: row.duration_seconds,
+    acknowledgedAt: toIsoString(row.acknowledged_at) as string | null,
+    acknowledgedBy: row.acknowledged_by,
+    acknowledgementNote: row.acknowledgement_note,
+    metadata: safeJsonParse(row.metadata_json),
+    createdAt: toIsoString(row.created_at) as string,
+    updatedAt: toIsoString(row.updated_at) as string,
+  } satisfies IncidentRecord;
+}
+
+async function getIncidentSummary(): Promise<IncidentListSummary> {
+  const rows = await queryRows<RowDataPacket & {
+    total: number | string;
+    open_count: number | string | null;
+    resolved_count: number | string | null;
+  }>(
+    `SELECT
+       COUNT(*) AS total,
+       SUM(status = 'open') AS open_count,
+       SUM(status = 'resolved') AS resolved_count
+     FROM monitoring_incidents`,
+  );
+  const row = rows[0];
+  return {
+    total: Number(row?.total || 0),
+    open: Number(row?.open_count || 0),
+    resolved: Number(row?.resolved_count || 0),
+  };
+}
+
+export async function listIncidentsPage(options: {
+  page?: number;
+  pageSize?: number;
+  status?: string | null;
+} = {}): Promise<IncidentListResult> {
   await ensureMonitoringSchema();
-  const safeLimit = Math.min(Math.max(limit, 1), 500);
+  const statusFilter = normalizeStatusFilter(options.status);
+  const whereSql = statusFilter ? 'WHERE status = ?' : '';
+  const whereParams = statusFilter ? [statusFilter] : [];
+  const countRows = await queryRows<RowDataPacket & { total: number | string }>(
+    `SELECT COUNT(*) AS total FROM monitoring_incidents ${whereSql}`,
+    whereParams,
+  );
+  const pagination = paginationMeta(Number(countRows[0]?.total || 0), options.page || 1, options.pageSize || 25);
+  const offset = paginationOffset(pagination);
   const rows = await queryRows<RowDataPacket & {
     id: number;
     source: string;
@@ -1272,31 +1382,22 @@ export async function listIncidents(limit = 100) {
   }>(
     `SELECT *
      FROM monitoring_incidents
+     ${whereSql}
      ORDER BY started_at DESC
-     LIMIT ${safeLimit}`,
+     LIMIT ${pagination.pageSize} OFFSET ${offset}`,
+    whereParams,
   );
 
-  return rows.map((row) => ({
-    id: row.id,
-    source: row.source,
-    domainKey: row.domain_key,
-    incidentKey: row.incident_key,
-    title: row.title,
-    status: row.status,
-    severity: row.severity,
-    entityType: row.entity_type,
-    entityKey: row.entity_key,
-    entityLabel: row.entity_label,
-    startedAt: toIsoString(row.started_at) as string,
-    resolvedAt: toIsoString(row.resolved_at) as string | null,
-    durationSeconds: row.duration_seconds,
-    acknowledgedAt: toIsoString(row.acknowledged_at) as string | null,
-    acknowledgedBy: row.acknowledged_by,
-    acknowledgementNote: row.acknowledgement_note,
-    metadata: safeJsonParse(row.metadata_json),
-    createdAt: toIsoString(row.created_at) as string,
-    updatedAt: toIsoString(row.updated_at) as string,
-  })) satisfies IncidentRecord[];
+  return {
+    incidents: rows.map(mapIncidentRow),
+    pagination,
+    summary: await getIncidentSummary(),
+  };
+}
+
+export async function listIncidents(limit = 100) {
+  const result = await listIncidentsPage({ page: 1, pageSize: limit });
+  return result.incidents;
 }
 
 async function getIncidentById(id: number) {
@@ -1407,8 +1508,74 @@ export async function acknowledgeIncident(params: {
 }
 
 export async function listAuditEvents(limit = 100) {
+  const result = await listAuditEventsPage({ page: 1, pageSize: limit });
+  return result.events;
+}
+
+function mapAuditRow(row: RowDataPacket & {
+  id: number;
+  event_type: string;
+  source: string;
+  severity: AuditSeverity;
+  entity_key: string;
+  entity_label: string;
+  message: string;
+  payload_json: string | null;
+  event_at: Date | string;
+  created_at: Date | string;
+}) {
+  return {
+    id: row.id,
+    eventType: row.event_type,
+    source: row.source,
+    severity: row.severity,
+    entityKey: row.entity_key,
+    entityLabel: row.entity_label,
+    message: row.message,
+    payload: safeJsonParse(row.payload_json),
+    eventAt: toIsoString(row.event_at) as string,
+    createdAt: toIsoString(row.created_at) as string,
+  } satisfies AuditEventRecord;
+}
+
+async function getAuditSummary(): Promise<AuditListSummary> {
+  const rows = await queryRows<RowDataPacket & {
+    total: number | string;
+    info_count: number | string | null;
+    warning_count: number | string | null;
+    critical_count: number | string | null;
+  }>(
+    `SELECT
+       COUNT(*) AS total,
+       SUM(severity = 'info') AS info_count,
+       SUM(severity = 'warning') AS warning_count,
+       SUM(severity = 'critical') AS critical_count
+     FROM monitoring_audit_events`,
+  );
+  const row = rows[0];
+  return {
+    total: Number(row?.total || 0),
+    info: Number(row?.info_count || 0),
+    warning: Number(row?.warning_count || 0),
+    critical: Number(row?.critical_count || 0),
+  };
+}
+
+export async function listAuditEventsPage(options: {
+  page?: number;
+  pageSize?: number;
+  severity?: string | null;
+} = {}): Promise<AuditListResult> {
   await ensureMonitoringSchema();
-  const safeLimit = Math.min(Math.max(limit, 1), 500);
+  const severityFilter = normalizeAuditSeverityFilter(options.severity);
+  const whereSql = severityFilter ? 'WHERE severity = ?' : '';
+  const whereParams = severityFilter ? [severityFilter] : [];
+  const countRows = await queryRows<RowDataPacket & { total: number | string }>(
+    `SELECT COUNT(*) AS total FROM monitoring_audit_events ${whereSql}`,
+    whereParams,
+  );
+  const pagination = paginationMeta(Number(countRows[0]?.total || 0), options.page || 1, options.pageSize || 25);
+  const offset = paginationOffset(pagination);
   const rows = await queryRows<RowDataPacket & {
     id: number;
     event_type: string;
@@ -1423,22 +1590,17 @@ export async function listAuditEvents(limit = 100) {
   }>(
     `SELECT *
      FROM monitoring_audit_events
+     ${whereSql}
      ORDER BY event_at DESC
-     LIMIT ${safeLimit}`,
+     LIMIT ${pagination.pageSize} OFFSET ${offset}`,
+    whereParams,
   );
 
-  return rows.map((row) => ({
-    id: row.id,
-    eventType: row.event_type,
-    source: row.source,
-    severity: row.severity,
-    entityKey: row.entity_key,
-    entityLabel: row.entity_label,
-    message: row.message,
-    payload: safeJsonParse(row.payload_json),
-    eventAt: toIsoString(row.event_at) as string,
-    createdAt: toIsoString(row.created_at) as string,
-  })) satisfies AuditEventRecord[];
+  return {
+    events: rows.map(mapAuditRow),
+    pagination,
+    summary: await getAuditSummary(),
+  };
 }
 
 export async function listHealthScores(days = 14) {

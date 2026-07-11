@@ -5,8 +5,10 @@ import { Activity, Camera, Fingerprint, Globe, Phone, RouterIcon, Server, type L
 import { format } from 'date-fns';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';
+import { PaginationControls } from '@/components/dashboard/pagination-controls';
 import type { NetworkMetrics, NetworkRangePoint, NetworkTarget } from '@/lib/types';
 import { getErrorMessage } from '@/lib/metrics';
+import { DEFAULT_PAGE_SIZE, paginateItems } from '@/lib/pagination';
 import { cn } from '@/lib/utils';
 
 type NetworkRangeResponse = { range: string; points: NetworkRangePoint[] };
@@ -70,6 +72,8 @@ export default function NetworkPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hiddenTargets, setHiddenTargets] = useState<Set<string>>(new Set());
+  const [targetPage, setTargetPage] = useState(1);
+  const [targetPageSize, setTargetPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   const fetchData = useCallback(async () => {
     try {
@@ -121,6 +125,11 @@ export default function NetworkPage() {
     
     return all;
   }, [data]);
+
+  const pagedAdditionalTargets = useMemo(
+    () => paginateItems(data?.additionalTargets || [], targetPage, targetPageSize),
+    [data?.additionalTargets, targetPage, targetPageSize],
+  );
 
   const toggleTarget = (id: string) => {
     setHiddenTargets(prev => {
@@ -279,7 +288,7 @@ export default function NetworkPage() {
           <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-900">Additional Ping Targets</h2>
         </div>
         <div className="grid gap-3 p-4 md:hidden">
-          {data.additionalTargets.map((target) => {
+          {pagedAdditionalTargets.items.map((target) => {
             const Icon = categoryIcon(target.category);
             return (
               <article key={target.target} className="rounded-lg border border-border bg-card p-4 space-y-3">
@@ -306,6 +315,9 @@ export default function NetworkPage() {
               </article>
             );
           })}
+          {pagedAdditionalTargets.items.length === 0 && (
+            <div className="px-4 py-8 text-center text-muted-foreground">Belum ada additional target.</div>
+          )}
         </div>
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm text-left">
@@ -318,7 +330,7 @@ export default function NetworkPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {data.additionalTargets.map((target) => {
+              {pagedAdditionalTargets.items.map((target) => {
                 const Icon = categoryIcon(target.category);
                 return (
                   <tr key={target.target} className="hover:bg-slate-50 transition-colors">
@@ -337,9 +349,25 @@ export default function NetworkPage() {
                   </tr>
                 );
               })}
+              {pagedAdditionalTargets.items.length === 0 && (
+                <tr>
+                  <td className="px-5 py-8 text-center text-muted-foreground" colSpan={4}>
+                    Belum ada additional target.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
+        <PaginationControls
+          pagination={pagedAdditionalTargets.meta}
+          itemLabel="target"
+          onPageChange={setTargetPage}
+          onPageSizeChange={(nextPageSize) => {
+            setTargetPageSize(nextPageSize);
+            setTargetPage(1);
+          }}
+        />
       </section>
     </div>
   );

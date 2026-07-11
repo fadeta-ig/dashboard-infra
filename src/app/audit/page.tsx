@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ClipboardList, RefreshCcw, ShieldCheck } from 'lucide-react';
 import { format } from 'date-fns';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';
+import { PaginationControls } from '@/components/dashboard/pagination-controls';
 import { getErrorMessage } from '@/lib/metrics';
+import { DEFAULT_PAGE_SIZE, type PaginationMeta } from '@/lib/pagination';
 
 interface AuditEventRecord {
   id: number;
@@ -24,6 +26,13 @@ interface AuditResponse {
   storageEnabled: boolean;
   message?: string;
   events: AuditEventRecord[];
+  pagination: PaginationMeta;
+  summary: {
+    total: number;
+    info: number;
+    warning: number;
+    critical: number;
+  };
 }
 
 function severityToIndicator(severity: AuditEventRecord['severity']) {
@@ -37,20 +46,28 @@ export default function AuditPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [severityFilter, setSeverityFilter] = useState<'all' | 'info' | 'warning' | 'critical'>('all');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   const fetchData = useCallback(async () => {
     try {
-      const response = await fetch('/api/ops/history/audit?limit=200', { cache: 'no-store' });
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(pageSize),
+      });
+      if (severityFilter !== 'all') params.set('severity', severityFilter);
+      const response = await fetch(`/api/ops/history/audit?${params.toString()}`, { cache: 'no-store' });
       if (!response.ok) throw new Error('Failed to fetch audit log');
       const json = (await response.json()) as AuditResponse;
       setData(json);
+      if (json.pagination.page !== page) setPage(json.pagination.page);
       setError(null);
     } catch (err: unknown) {
       setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, pageSize, severityFilter]);
 
   useEffect(() => {
     const initial = window.setTimeout(() => void fetchData(), 0);
@@ -61,11 +78,7 @@ export default function AuditPage() {
     };
   }, [fetchData]);
 
-  const events = useMemo(() => {
-    const items = data?.events || [];
-    if (severityFilter === 'all') return items;
-    return items.filter((item) => item.severity === severityFilter);
-  }, [data?.events, severityFilter]);
+  const events = useMemo(() => data?.events || [], [data?.events]);
 
   if (loading) {
     return (
@@ -101,7 +114,10 @@ export default function AuditPage() {
             <button
               key={filter}
               type="button"
-              onClick={() => setSeverityFilter(filter)}
+              onClick={() => {
+                setSeverityFilter(filter);
+                setPage(1);
+              }}
               className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
                 severityFilter === filter
                   ? 'border-slate-900 bg-slate-900 text-white'
@@ -128,6 +144,27 @@ export default function AuditPage() {
       {!data?.storageEnabled && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           {data?.message || 'Storage audit belum aktif.'}
+        </div>
+      )}
+
+      {data?.storageEnabled && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="panel-surface rounded-lg p-4">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">Total Event</p>
+            <p className="mt-2 text-2xl font-semibold">{data.summary.total}</p>
+          </div>
+          <div className="panel-surface rounded-lg p-4">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">Critical</p>
+            <p className="mt-2 text-2xl font-semibold text-red-600">{data.summary.critical}</p>
+          </div>
+          <div className="panel-surface rounded-lg p-4">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">Warning</p>
+            <p className="mt-2 text-2xl font-semibold text-amber-600">{data.summary.warning}</p>
+          </div>
+          <div className="panel-surface rounded-lg p-4">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">Info</p>
+            <p className="mt-2 text-2xl font-semibold text-emerald-600">{data.summary.info}</p>
+          </div>
         </div>
       )}
 
@@ -201,6 +238,17 @@ export default function AuditPage() {
             </tbody>
           </table>
         </div>
+        {data?.pagination && (
+          <PaginationControls
+            pagination={data.pagination}
+            itemLabel="event"
+            onPageChange={setPage}
+            onPageSizeChange={(nextPageSize) => {
+              setPageSize(nextPageSize);
+              setPage(1);
+            }}
+          />
+        )}
       </section>
     </div>
   );

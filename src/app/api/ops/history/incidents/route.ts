@@ -1,5 +1,5 @@
 import { type NextRequest } from 'next/server';
-import { listIncidents } from '@/lib/history';
+import { listIncidentsPage } from '@/lib/history';
 import { getDatabaseUnavailableReason, isDatabaseConfigured } from '@/lib/db';
 import { enforceMetricsRateLimit, noStoreJson } from '@/lib/rate-limit';
 
@@ -15,15 +15,20 @@ export async function GET(request: NextRequest) {
       storageEnabled: false,
       message: getDatabaseUnavailableReason(),
       incidents: [],
+      pagination: { page: 1, pageSize: 25, total: 0, totalPages: 1 },
+      summary: { total: 0, open: 0, resolved: 0 },
     }, { status: 200 });
   }
 
-  const { searchParams } = new URL(request.url);
-  const limit = Number.parseInt(searchParams.get('limit') || '100', 10);
+  const { searchParams } = request.nextUrl;
+  const page = Number.parseInt(searchParams.get('page') || '1', 10);
+  const pageSize = Number.parseInt(searchParams.get('pageSize') || searchParams.get('limit') || '25', 10);
+  const status = searchParams.get('status');
+  const result = await listIncidentsPage({ page, pageSize, status });
 
   return noStoreJson({
     ok: true,
     storageEnabled: true,
-    incidents: await listIncidents(limit),
+    ...result,
   });
 }

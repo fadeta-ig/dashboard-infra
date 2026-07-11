@@ -1,11 +1,13 @@
 ﻿'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, RefreshCcw } from 'lucide-react';
 import { format } from 'date-fns';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';
+import { PaginationControls } from '@/components/dashboard/pagination-controls';
 import type { TargetHealth } from '@/lib/types';
 import { getErrorMessage } from '@/lib/metrics';
+import { DEFAULT_PAGE_SIZE, paginateItems } from '@/lib/pagination';
 
 interface TargetsResponse {
   targets: TargetHealth[];
@@ -16,6 +18,8 @@ export default function TargetsPage() {
   const [data, setData] = useState<TargetsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   const fetchData = useCallback(async () => {
     try {
@@ -44,6 +48,11 @@ export default function TargetsPage() {
       window.clearInterval(interval);
     };
   }, [fetchData]);
+
+  const pagedTargets = useMemo(
+    () => paginateItems(data?.targets || [], page, pageSize),
+    [data?.targets, page, pageSize],
+  );
 
   if (loading) {
     return (
@@ -95,7 +104,7 @@ export default function TargetsPage() {
 
       <div className="panel-surface rounded-lg overflow-hidden">
         <div className="grid gap-3 p-4 md:hidden">
-          {data.targets.map((targetItem) => (
+          {pagedTargets.items.map((targetItem) => (
             <div key={`${targetItem.job}-${targetItem.instance}`} className="rounded-lg border border-border bg-card p-4 space-y-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -116,7 +125,7 @@ export default function TargetsPage() {
               </div>
             </div>
           ))}
-          {data.targets.length === 0 && (
+          {pagedTargets.items.length === 0 && (
             <div className="px-4 py-8 text-center text-muted-foreground">No targets found.</div>
           )}
         </div>
@@ -132,7 +141,7 @@ export default function TargetsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {data.targets.map((targetItem) => (
+              {pagedTargets.items.map((targetItem) => (
                 <tr key={`${targetItem.job}-${targetItem.instance}`} className="hover:bg-muted/50 transition-colors">
                   <td className="px-6 py-4 font-medium">{targetItem.job}</td>
                   <td className="px-6 py-4 font-mono text-muted-foreground">{targetItem.instance}</td>
@@ -143,7 +152,7 @@ export default function TargetsPage() {
                   <td className="px-6 py-4 font-mono text-right text-muted-foreground">{format(new Date(targetItem.lastChecked), 'HH:mm:ss')}</td>
                 </tr>
               ))}
-              {data.targets.length === 0 && (
+              {pagedTargets.items.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
                     No targets found.
@@ -153,6 +162,15 @@ export default function TargetsPage() {
             </tbody>
           </table>
         </div>
+        <PaginationControls
+          pagination={pagedTargets.meta}
+          itemLabel="target"
+          onPageChange={setPage}
+          onPageSizeChange={(nextPageSize) => {
+            setPageSize(nextPageSize);
+            setPage(1);
+          }}
+        />
       </div>
     </div>
   );

@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, RefreshCcw, ShieldAlert } from 'lucide-react';
 import { format, formatDistanceStrict } from 'date-fns';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';
+import { PaginationControls } from '@/components/dashboard/pagination-controls';
 import { getErrorMessage } from '@/lib/metrics';
+import { DEFAULT_PAGE_SIZE, type PaginationMeta } from '@/lib/pagination';
 
 interface IncidentRecord {
   id: number;
@@ -33,6 +35,12 @@ interface IncidentsResponse {
   storageEnabled: boolean;
   message?: string;
   incidents: IncidentRecord[];
+  pagination: PaginationMeta;
+  summary: {
+    total: number;
+    open: number;
+    resolved: number;
+  };
 }
 
 function severityText(severity: IncidentRecord['severity']) {
@@ -58,21 +66,29 @@ export default function IncidentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'resolved'>('all');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [ackingId, setAckingId] = useState<number | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
-      const response = await fetch('/api/ops/history/incidents?limit=200', { cache: 'no-store' });
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(pageSize),
+      });
+      if (statusFilter !== 'all') params.set('status', statusFilter);
+      const response = await fetch(`/api/ops/history/incidents?${params.toString()}`, { cache: 'no-store' });
       if (!response.ok) throw new Error('Failed to fetch incident history');
       const json = (await response.json()) as IncidentsResponse;
       setData(json);
+      if (json.pagination.page !== page) setPage(json.pagination.page);
       setError(null);
     } catch (err: unknown) {
       setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, pageSize, statusFilter]);
 
   const acknowledge = async (incident: IncidentRecord) => {
     const note = window.prompt('Catatan acknowledgement opsional:', incident.acknowledgementNote || '');
@@ -106,13 +122,8 @@ export default function IncidentsPage() {
     };
   }, [fetchData]);
 
-  const incidents = useMemo(() => {
-    const items = data?.incidents || [];
-    if (statusFilter === 'all') return items;
-    return items.filter((item) => item.status === statusFilter);
-  }, [data?.incidents, statusFilter]);
-
-  const openCount = data?.incidents.filter((item) => item.status === 'open').length || 0;
+  const incidents = useMemo(() => data?.incidents || [], [data?.incidents]);
+  const openCount = data?.summary.open || 0;
 
   if (loading) {
     return (
@@ -148,7 +159,10 @@ export default function IncidentsPage() {
             <button
               key={filter}
               type="button"
-              onClick={() => setStatusFilter(filter)}
+              onClick={() => {
+                setStatusFilter(filter);
+                setPage(1);
+              }}
               className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
                 statusFilter === filter
                   ? 'border-slate-900 bg-slate-900 text-white'
@@ -181,7 +195,7 @@ export default function IncidentsPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="panel-surface rounded-lg p-4">
           <p className="text-xs uppercase tracking-wider text-muted-foreground">Total Incident</p>
-          <p className="mt-2 text-2xl font-semibold">{data?.incidents.length || 0}</p>
+          <p className="mt-2 text-2xl font-semibold">{data?.summary.total || 0}</p>
         </div>
         <div className="panel-surface rounded-lg p-4">
           <p className="text-xs uppercase tracking-wider text-muted-foreground">Open Incident</p>
@@ -190,7 +204,7 @@ export default function IncidentsPage() {
         <div className="panel-surface rounded-lg p-4">
           <p className="text-xs uppercase tracking-wider text-muted-foreground">Resolved</p>
           <p className="mt-2 text-2xl font-semibold text-emerald-600">
-            {(data?.incidents.length || 0) - openCount}
+            {data?.summary.resolved || 0}
           </p>
         </div>
         <div className="panel-surface rounded-lg p-4">
@@ -332,6 +346,17 @@ export default function IncidentsPage() {
             </tbody>
           </table>
         </div>
+        {data?.pagination && (
+          <PaginationControls
+            pagination={data.pagination}
+            itemLabel="incident"
+            onPageChange={setPage}
+            onPageSizeChange={(nextPageSize) => {
+              setPageSize(nextPageSize);
+              setPage(1);
+            }}
+          />
+        )}
       </section>
     </div>
   );

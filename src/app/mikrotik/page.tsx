@@ -17,8 +17,10 @@ import {
   Waves,
 } from 'lucide-react';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';
+import { PaginationControls } from '@/components/dashboard/pagination-controls';
 import type { MikrotikDiscoveryResponse } from '@/lib/types';
 import { getErrorMessage } from '@/lib/metrics';
+import { DEFAULT_PAGE_SIZE, paginateItems } from '@/lib/pagination';
 import { cn } from '@/lib/utils';
 
 interface InterfaceTraffic {
@@ -159,6 +161,10 @@ export default function MikrotikPage() {
   const [loadingOverview, setLoadingOverview] = useState(true);
   const [loadingDiscovery, setLoadingDiscovery] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [interfacePage, setInterfacePage] = useState(1);
+  const [interfacePageSize, setInterfacePageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [discoveryPage, setDiscoveryPage] = useState(1);
+  const [discoveryPageSize, setDiscoveryPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   const fetchOverview = useCallback(async () => {
     try {
@@ -187,6 +193,16 @@ export default function MikrotikPage() {
       window.clearInterval(interval);
     };
   }, [fetchOverview]);
+
+  const pagedInterfaces = useMemo(
+    () => paginateItems(overview?.interfaces || [], interfacePage, interfacePageSize),
+    [overview?.interfaces, interfacePage, interfacePageSize],
+  );
+
+  const pagedDiscoveryMetrics = useMemo(
+    () => paginateItems(data?.metrics || [], discoveryPage, discoveryPageSize),
+    [data?.metrics, discoveryPage, discoveryPageSize],
+  );
 
   const handleDiscovery = async () => {
     setLoadingDiscovery(true);
@@ -359,7 +375,7 @@ export default function MikrotikPage() {
           </div>
 
           <div className="grid gap-3 p-4 md:hidden">
-            {(overview?.interfaces || []).map((item) => (
+            {pagedInterfaces.items.map((item) => (
               <article key={`${item.instance}-${item.name}`} className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/70 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -392,7 +408,7 @@ export default function MikrotikPage() {
                 </div>
               </article>
             ))}
-            {(overview?.interfaces || []).length === 0 && (
+            {pagedInterfaces.items.length === 0 && (
               <div className="px-6 py-8 text-center text-muted-foreground">Belum ada mapping interface.</div>
             )}
           </div>
@@ -411,7 +427,7 @@ export default function MikrotikPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {(overview?.interfaces || []).map((item) => (
+                {pagedInterfaces.items.map((item) => (
                   <tr key={`${item.instance}-${item.name}`} className="transition-colors hover:bg-slate-50/80">
                     <td className="px-5 py-4">
                       <div className="font-mono text-sm font-medium text-slate-900">{item.name}</div>
@@ -430,7 +446,7 @@ export default function MikrotikPage() {
                     <td className="px-5 py-4 text-right font-mono text-[13px]">{countValue(item.errors5m)} / {countValue(item.discards5m)}</td>
                   </tr>
                 ))}
-                {(overview?.interfaces || []).length === 0 && (
+                {pagedInterfaces.items.length === 0 && (
                   <tr>
                     <td colSpan={7} className="px-5 py-8 text-center text-muted-foreground">
                       Belum ada mapping interface.
@@ -440,6 +456,15 @@ export default function MikrotikPage() {
               </tbody>
             </table>
           </div>
+          <PaginationControls
+            pagination={pagedInterfaces.meta}
+            itemLabel="interface"
+            onPageChange={setInterfacePage}
+            onPageSizeChange={(nextPageSize) => {
+              setInterfacePageSize(nextPageSize);
+              setInterfacePage(1);
+            }}
+          />
 
           {(overview?.missingRequiredMetrics || []).length > 0 && (
             <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -476,7 +501,7 @@ export default function MikrotikPage() {
             </p>
           </div>
           <div className="grid gap-3 p-4 md:hidden">
-            {data.metrics.map((metric) => (
+            {pagedDiscoveryMetrics.items.map((metric) => (
               <article key={metric.name} className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/70 p-4">
                 <p className="break-all font-mono text-sm font-medium text-slate-900">{metric.name}</p>
                 <div className="text-xs text-muted-foreground">
@@ -486,7 +511,7 @@ export default function MikrotikPage() {
                 </div>
               </article>
             ))}
-            {data.metrics.length === 0 && (
+            {pagedDiscoveryMetrics.items.length === 0 && (
               <div className="px-6 py-8 text-center text-muted-foreground">Belum ada metric SNMP yang terdeteksi.</div>
             )}
           </div>
@@ -501,7 +526,7 @@ export default function MikrotikPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {data.metrics.map((metric) => (
+                {pagedDiscoveryMetrics.items.map((metric) => (
                   <tr key={metric.name} className="transition-colors hover:bg-slate-50/80">
                     <td className="px-6 py-4 font-mono text-sm font-medium text-slate-900">{metric.name}</td>
                     <td className="px-6 py-4 text-muted-foreground">{metric.jobs.join(', ') || '-'}</td>
@@ -509,7 +534,7 @@ export default function MikrotikPage() {
                     <td className="max-w-xl truncate px-6 py-4 font-mono text-muted-foreground">{labelPreview(metric.sampleLabels)}</td>
                   </tr>
                 ))}
-                {data.metrics.length === 0 && (
+                {pagedDiscoveryMetrics.items.length === 0 && (
                   <tr>
                     <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground">
                       Belum ada metric SNMP yang terdeteksi.
@@ -519,6 +544,15 @@ export default function MikrotikPage() {
               </tbody>
             </table>
           </div>
+          <PaginationControls
+            pagination={pagedDiscoveryMetrics.meta}
+            itemLabel="metric"
+            onPageChange={setDiscoveryPage}
+            onPageSizeChange={(nextPageSize) => {
+              setDiscoveryPageSize(nextPageSize);
+              setDiscoveryPage(1);
+            }}
+          />
         </section>
       )}
     </div>
