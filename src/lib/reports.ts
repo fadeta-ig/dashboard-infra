@@ -146,6 +146,7 @@ const AUDIT_EVENT_LABELS: Record<string, string> = {
   service_state_changed: 'Status service berubah',
   collector_health_changed: 'Kelengkapan data service berubah',
   metric_gap_changed: 'Kelengkapan data monitoring berubah',
+  incident_acknowledged: 'Incident di-acknowledge operator',
 };
 
 const TARGET_JOB_LABELS: Record<string, string> = {

@@ -20,6 +20,9 @@ interface IncidentRecord {
   startedAt: string;
   resolvedAt: string | null;
   durationSeconds: number | null;
+  acknowledgedAt: string | null;
+  acknowledgedBy: string | null;
+  acknowledgementNote: string | null;
   metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -55,6 +58,7 @@ export default function IncidentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'resolved'>('all');
+  const [ackingId, setAckingId] = useState<number | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -69,6 +73,29 @@ export default function IncidentsPage() {
       setLoading(false);
     }
   }, []);
+
+  const acknowledge = async (incident: IncidentRecord) => {
+    const note = window.prompt('Catatan acknowledgement opsional:', incident.acknowledgementNote || '');
+    if (note === null) return;
+
+    setAckingId(incident.id);
+    try {
+      const response = await fetch('/api/ops/history/incidents/ack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: incident.id, note }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string; message?: string };
+        throw new Error(payload.error || payload.message || 'Gagal acknowledge incident.');
+      }
+      await fetchData();
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+    } finally {
+      setAckingId(null);
+    }
+  };
 
   useEffect(() => {
     const initial = window.setTimeout(() => void fetchData(), 0);
@@ -212,6 +239,25 @@ export default function IncidentsPage() {
                   <p className="text-xs uppercase text-muted-foreground">Duration</p>
                   <p>{formatDurationValue(incident)}</p>
                 </div>
+                <div className="col-span-2">
+                  <p className="text-xs uppercase text-muted-foreground">Acknowledgement</p>
+                  {incident.acknowledgedAt ? (
+                    <p className="text-xs text-slate-600">
+                      {incident.acknowledgedBy || 'Operator'} - {format(new Date(incident.acknowledgedAt), 'dd MMM yyyy HH:mm')}
+                    </p>
+                  ) : incident.status === 'open' ? (
+                    <button
+                      type="button"
+                      onClick={() => void acknowledge(incident)}
+                      disabled={ackingId === incident.id}
+                      className="mt-1 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      {ackingId === incident.id ? 'Ack...' : 'Ack Incident'}
+                    </button>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">-</p>
+                  )}
+                </div>
               </div>
             </article>
           ))}
@@ -231,6 +277,7 @@ export default function IncidentsPage() {
                 <th className="px-5 py-4 font-medium">Started</th>
                 <th className="px-5 py-4 font-medium">Resolved</th>
                 <th className="px-5 py-4 font-medium">Duration</th>
+                <th className="px-5 py-4 font-medium">Ack</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -254,11 +301,30 @@ export default function IncidentsPage() {
                     {incident.resolvedAt ? format(new Date(incident.resolvedAt), 'dd MMM yyyy HH:mm') : '-'}
                   </td>
                   <td className="px-5 py-4">{formatDurationValue(incident)}</td>
+                  <td className="px-5 py-4">
+                    {incident.acknowledgedAt ? (
+                      <div className="text-xs">
+                        <p className="font-medium text-slate-700">{incident.acknowledgedBy || 'Operator'}</p>
+                        <p className="font-mono text-muted-foreground">{format(new Date(incident.acknowledgedAt), 'dd MMM HH:mm')}</p>
+                      </div>
+                    ) : incident.status === 'open' ? (
+                      <button
+                        type="button"
+                        onClick={() => void acknowledge(incident)}
+                        disabled={ackingId === incident.id}
+                        className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60"
+                      >
+                        {ackingId === incident.id ? 'Ack...' : 'Ack'}
+                      </button>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </td>
                 </tr>
               ))}
               {incidents.length === 0 && (
                 <tr>
-                  <td className="px-5 py-8 text-center text-muted-foreground" colSpan={7}>
+                  <td className="px-5 py-8 text-center text-muted-foreground" colSpan={8}>
                     Belum ada incident yang tersimpan.
                   </td>
                 </tr>

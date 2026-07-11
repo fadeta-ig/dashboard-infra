@@ -31,7 +31,7 @@ src/
     network/page.tsx
     targets/page.tsx
     mikrotik/page.tsx
-    roadmap/page.tsx
+    panduan/page.tsx
     login/page.tsx
     layout.tsx
     globals.css
@@ -64,6 +64,20 @@ DASHBOARD_COOKIE_SECURE=
 APP_BASE_URL=http://127.0.0.1:3000
 OPS_INTERNAL_TOKEN=gunakan-token-internal-panjang-acak
 HISTORY_COLLECT_INTERVAL_MS=60000
+ALERT_WEBHOOK_URL=
+ALERT_WEBHOOK_TOKEN=
+ALERT_COOLDOWN_MS=900000
+ALERT_EMAIL_SMTP_HOST=
+ALERT_EMAIL_SMTP_PORT=587
+ALERT_EMAIL_SMTP_SECURE=false
+ALERT_EMAIL_SMTP_USER=
+ALERT_EMAIL_SMTP_PASS=
+ALERT_EMAIL_FROM=
+ALERT_EMAIL_TO=
+ALERT_WHATSAPP_TOKEN=
+ALERT_WHATSAPP_PHONE_NUMBER_ID=
+ALERT_WHATSAPP_TO=
+ALERT_WHATSAPP_API_VERSION=v20.0
 MYSQL_HOST=127.0.0.1
 MYSQL_PORT=3306
 MYSQL_USER=infra_app
@@ -191,7 +205,7 @@ THRESHOLD_MIKROTIK_INTERFACE_UTILIZATION_PERCENT_WARNING=80
 THRESHOLD_MIKROTIK_INTERFACE_UTILIZATION_PERCENT_CRITICAL=95
 ```
 
-Halaman `/roadmap` membaca threshold aktif dan readiness metric dari backend. Jika metric wajib belum tersedia, panel readiness akan menandai kategori sebagai `Missing` atau `Partial`.
+Halaman `/panduan` dan panel readiness membaca threshold aktif serta readiness metric dari backend. Jika metric wajib belum tersedia, panel readiness akan menandai kategori sebagai `Missing` atau `Partial`.
 
 ## Endpoint Metrics
 
@@ -213,6 +227,7 @@ Semua endpoint dilindungi session auth melalui `src/proxy.ts`, memakai rate limi
 - `GET /api/ops/reports/monthly?month=YYYY-MM`
 - `GET /api/ops/reports/monthly/pdf?month=YYYY-MM`
 - `POST /api/ops/history/collect`
+- `POST /api/ops/history/incidents/ack`
 - `POST /api/ops/storage/init`
 
 PromQL disimpan di backend pada `src/lib/metrics.ts` dan route handler terkait.
@@ -236,6 +251,7 @@ Tabel yang dibuat oleh inisialisasi storage:
 - `report_snapshots`
 - `health_scores`
 - `capacity_daily`
+- `monitoring_alert_deliveries`
 
 Halaman UI yang sudah tersedia:
 
@@ -243,6 +259,40 @@ Halaman UI yang sudah tersedia:
 - `/reports` untuk report bulanan dan download PDF.
 - `/incidents` untuk histori incident target down/up.
 - `/audit` untuk event audit operasional seperti reboot required, service restart state, collector missing, dan metric gap.
+
+P0 hardening yang sudah aktif:
+
+- Login memakai rate limit ringan untuk mengurangi brute-force terhadap `/api/auth/login`.
+- Incident open dilindungi unique key `open_incident_key`, sehingga worker collector ganda tidak membuat incident open dobel untuk entity yang sama.
+- Incident open bisa di-acknowledge dari halaman `/incidents`; actor diambil dari session login dan tercatat di audit log.
+- Collector mengirim alert lifecycle `opened`, `resolved`, dan `acknowledged` ke webhook generik, email SMTP, dan WhatsApp jika channel terkait dikonfigurasi.
+- Alert delivery dicatat ke `monitoring_alert_deliveries` dengan status `sent`, `failed`, atau `skipped`.
+- Cooldown alert dikendalikan oleh `ALERT_COOLDOWN_MS` default 900000 ms.
+
+Payload webhook alert berbentuk JSON dan menyertakan `eventType`, `generatedAt`, serta detail incident. Jika `ALERT_WEBHOOK_TOKEN` diisi, dashboard mengirim header `Authorization: Bearer <token>`.
+
+Konfigurasi email SMTP:
+
+```bash
+ALERT_EMAIL_SMTP_HOST=smtp.example.com
+ALERT_EMAIL_SMTP_PORT=587
+ALERT_EMAIL_SMTP_SECURE=false
+ALERT_EMAIL_SMTP_USER=monitoring@example.com
+ALERT_EMAIL_SMTP_PASS=app-password-atau-password-smtp
+ALERT_EMAIL_FROM=monitoring@example.com
+ALERT_EMAIL_TO=it@example.com,manager@example.com
+```
+
+Konfigurasi WhatsApp Cloud API:
+
+```bash
+ALERT_WHATSAPP_TOKEN=token-whatsapp-cloud-api
+ALERT_WHATSAPP_PHONE_NUMBER_ID=phone-number-id
+ALERT_WHATSAPP_TO=6281234567890,6289876543210
+ALERT_WHATSAPP_API_VERSION=v20.0
+```
+
+Nomor WhatsApp tujuan memakai format internasional tanpa `+`. Untuk WhatsApp Cloud API production, nomor pengirim harus sudah terdaftar di Meta, token masih valid, dan nomor tujuan harus memenuhi aturan opt-in/izin komunikasi organisasi.
 
 ## Health Score, Capacity, dan Temperature
 
@@ -307,6 +357,8 @@ Worker ini membutuhkan:
 - `OPS_INTERNAL_TOKEN`
 - `HISTORY_COLLECT_INTERVAL_MS`
 - konfigurasi `MYSQL_*`
+
+Jika channel alert dikonfigurasi, worker juga akan mengirim alert incident lifecycle ke channel tersebut. Channel yang kosong tetap dicatat sebagai `skipped` tanpa pengiriman keluar.
 
 ## Development
 

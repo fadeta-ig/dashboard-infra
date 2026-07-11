@@ -1,5 +1,6 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createSessionValue, SESSION_COOKIE } from '@/lib/auth';
+import { enforceAuthRateLimit } from '@/lib/rate-limit';
 
 interface LoginPayload {
   username?: unknown;
@@ -26,6 +27,9 @@ function shouldUseSecureCookie(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const limited = enforceAuthRateLimit(request);
+  if (limited) return limited;
+
   const payload = (await request.json().catch(() => ({}))) as LoginPayload;
   const username = typeof payload.username === 'string' ? payload.username : '';
   const password = typeof payload.password === 'string' ? payload.password : '';

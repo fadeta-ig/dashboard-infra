@@ -1,11 +1,12 @@
-import type { RowDataPacket } from 'mysql2/promise';
+import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
+import { dispatchIncidentAlert, type AlertIncidentSnapshot } from '@/lib/alerts';
 import { executeStatement, getDatabaseUnavailableReason, getPool, isDatabaseConfigured, queryRows } from '@/lib/db';
 import { buildNetworkMetrics, buildServerMetrics, buildTargets, nowIso, PROMQL } from '@/lib/metrics';
 import { getMikrotikTemperatureRange, getMikrotikTemperatureSnapshot } from '@/lib/mikrotik-temperature';
 import { prometheusInstantQuery, prometheusRangeQuery } from '@/lib/prometheus';
 import { getReadinessSnapshot } from '@/lib/readiness';
 import { getServiceHealthSnapshot } from '@/lib/service-health';
-import { getMonitoringThresholds } from '@/lib/thresholds';
+import { getMonitoringThresholds, thresholdStatus } from '@/lib/thresholds';
 
 export type IncidentSeverity = 'warning' | 'critical';
 export type IncidentStatus = 'open' | 'resolved';
@@ -25,6 +26,9 @@ export interface IncidentRecord {
   startedAt: string;
   resolvedAt: string | null;
   durationSeconds: number | null;
+  acknowledgedAt: string | null;
+  acknowledgedBy: string | null;
+  acknowledgementNote: string | null;
   metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -64,6 +68,19 @@ export interface CapacityDailyRecord {
   createdAt: string;
 }
 
+export interface AlertDeliveryRecord {
+  id: number;
+  incidentKey: string;
+  eventType: string;
+  channel: string;
+  status: string;
+  attempts: number;
+  lastError: string | null;
+  deliveredAt: string | null;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
 const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS monitoring_incidents (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -79,9 +96,14 @@ const SCHEMA_STATEMENTS = [
     started_at DATETIME NOT NULL,
     resolved_at DATETIME NULL,
     duration_seconds INT NULL,
+    acknowledged_at DATETIME NULL,
+    acknowledged_by VARCHAR(191) NULL,
+    acknowledgement_note VARCHAR(255) NULL,
+    open_incident_key VARCHAR(191) NULL,
     metadata_json JSON NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_monitoring_incidents_open (open_incident_key),
     KEY idx_monitoring_incidents_status (status),
     KEY idx_monitoring_incidents_started_at (started_at),
     KEY idx_monitoring_incidents_entity_key (entity_key)
@@ -135,6 +157,21 @@ const SCHEMA_STATEMENTS = [
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uniq_capacity_daily (snapshot_date, metric_key)
   )`,
+  `CREATE TABLE IF NOT EXISTS monitoring_alert_deliveries (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    incident_key VARCHAR(191) NOT NULL,
+    event_type VARCHAR(32) NOT NULL,
+    channel VARCHAR(32) NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    attempts INT NOT NULL DEFAULT 0,
+    last_error VARCHAR(255) NULL,
+    delivered_at DATETIME NULL,
+    payload_json JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_monitoring_alert_deliveries_incident (incident_key),
+    KEY idx_monitoring_alert_deliveries_event (event_type),
+    KEY idx_monitoring_alert_deliveries_created_at (created_at)
+  )`,
 ];
 
 function toMysqlDateTime(value: string) {
@@ -168,6 +205,84 @@ function clampScore(value: number) {
   return Math.max(0, Math.min(100, round(value, 2)));
 }
 
+async function columnExists(tableName: string, columnName: string) {
+  const rows = await queryRows<RowDataPacket & { count_value: number }>(
+    `SELECT COUNT(*) AS count_value
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       AND COLUMN_NAME = ?`,
+    [tableName, columnName],
+  );
+  return Number(rows[0]?.count_value || 0) > 0;
+}
+
+async function indexExists(tableName: string, indexName: string) {
+  const rows = await queryRows<RowDataPacket & { count_value: number }>(
+    `SELECT COUNT(*) AS count_value
+     FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       AND INDEX_NAME = ?`,
+    [tableName, indexName],
+  );
+  return Number(rows[0]?.count_value || 0) > 0;
+}
+
+async function ensureColumn(tableName: string, columnName: string, statement: string) {
+  if (await columnExists(tableName, columnName)) return;
+  await executeStatement(statement);
+}
+
+async function ensureIndex(tableName: string, indexName: string, statement: string) {
+  if (await indexExists(tableName, indexName)) return;
+  await executeStatement(statement);
+}
+
+async function ensureMonitoringMigrations() {
+  await ensureColumn(
+    'monitoring_incidents',
+    'acknowledged_at',
+    'ALTER TABLE monitoring_incidents ADD COLUMN acknowledged_at DATETIME NULL AFTER duration_seconds',
+  );
+  await ensureColumn(
+    'monitoring_incidents',
+    'acknowledged_by',
+    'ALTER TABLE monitoring_incidents ADD COLUMN acknowledged_by VARCHAR(191) NULL AFTER acknowledged_at',
+  );
+  await ensureColumn(
+    'monitoring_incidents',
+    'acknowledgement_note',
+    'ALTER TABLE monitoring_incidents ADD COLUMN acknowledgement_note VARCHAR(255) NULL AFTER acknowledged_by',
+  );
+  await ensureColumn(
+    'monitoring_incidents',
+    'open_incident_key',
+    'ALTER TABLE monitoring_incidents ADD COLUMN open_incident_key VARCHAR(191) NULL AFTER acknowledgement_note',
+  );
+
+  await executeStatement(
+    `UPDATE monitoring_incidents
+     SET open_incident_key = incident_key
+     WHERE status = 'open' AND open_incident_key IS NULL`,
+  );
+  await executeStatement(
+    `UPDATE monitoring_incidents duplicate_row
+     JOIN monitoring_incidents keeper
+       ON keeper.incident_key = duplicate_row.incident_key
+      AND keeper.status = 'open'
+      AND keeper.id < duplicate_row.id
+     SET duplicate_row.open_incident_key = NULL
+     WHERE duplicate_row.status = 'open'`,
+  );
+
+  await ensureIndex(
+    'monitoring_incidents',
+    'uniq_monitoring_incidents_open',
+    'ALTER TABLE monitoring_incidents ADD UNIQUE KEY uniq_monitoring_incidents_open (open_incident_key)',
+  );
+}
+
 export async function ensureMonitoringSchema() {
   if (!isDatabaseConfigured()) {
     throw new Error(getDatabaseUnavailableReason() || 'Database unavailable');
@@ -181,6 +296,8 @@ export async function ensureMonitoringSchema() {
   } finally {
     connection.release();
   }
+
+  await ensureMonitoringMigrations();
 }
 
 async function getStoredState<T>(stateKey: string): Promise<T | null> {
@@ -204,10 +321,21 @@ async function setStoredState(stateKey: string, value: unknown) {
 async function getOpenIncidentMap() {
   const rows = await queryRows<RowDataPacket & {
     id: number;
+    source: string;
+    domain_key: string;
     incident_key: string;
+    title: string;
+    severity: IncidentSeverity;
+    entity_type: string;
+    entity_key: string;
+    entity_label: string;
     started_at: Date | string;
+    metadata_json: string | null;
   }>(
-    'SELECT id, incident_key, started_at FROM monitoring_incidents WHERE status = "open"',
+    `SELECT id, source, domain_key, incident_key, title, severity, entity_type, entity_key, entity_label, started_at, metadata_json
+     FROM monitoring_incidents
+     WHERE status = "open" AND open_incident_key IS NOT NULL
+     ORDER BY started_at ASC`,
   );
   return new Map(rows.map((row) => [row.incident_key, row]));
 }
@@ -223,11 +351,11 @@ async function insertIncident(params: {
   entityLabel: string;
   startedAtIso: string;
   metadata: Record<string, unknown>;
-}) {
-  await executeStatement(
-    `INSERT INTO monitoring_incidents
-      (source, domain_key, incident_key, title, status, severity, entity_type, entity_key, entity_label, started_at, metadata_json)
-     VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?)`,
+}): Promise<boolean> {
+  const [result] = await getPool().execute<ResultSetHeader>(
+    `INSERT IGNORE INTO monitoring_incidents
+      (source, domain_key, incident_key, title, status, severity, entity_type, entity_key, entity_label, started_at, open_incident_key, metadata_json)
+     VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)`,
     [
       params.source,
       params.domainKey,
@@ -238,9 +366,11 @@ async function insertIncident(params: {
       params.entityKey,
       params.entityLabel,
       toMysqlDateTime(params.startedAtIso),
+      params.incidentKey,
       JSON.stringify(params.metadata),
     ],
   );
+  return result.affectedRows > 0;
 }
 
 async function resolveIncident(id: number, startedAt: Date | string, resolvedAtIso: string, metadata: Record<string, unknown>) {
@@ -252,6 +382,7 @@ async function resolveIncident(id: number, startedAt: Date | string, resolvedAtI
      SET status = 'resolved',
          resolved_at = ?,
          duration_seconds = ?,
+         open_incident_key = NULL,
          metadata_json = ?
      WHERE id = ?`,
     [toMysqlDateTime(resolvedAtIso), durationSeconds, JSON.stringify(metadata), id],
@@ -560,6 +691,233 @@ async function updateCapacitySnapshots(snapshot: Awaited<ReturnType<typeof colle
   ]);
 }
 
+interface IncidentCandidate {
+  active: boolean | null;
+  source: string;
+  domainKey: string;
+  incidentKey: string;
+  title: string;
+  severity: IncidentSeverity;
+  entityType: string;
+  entityKey: string;
+  entityLabel: string;
+  metadata: Record<string, unknown>;
+}
+
+function severityFromStatus(status: 'healthy' | 'warning' | 'critical' | 'unknown') {
+  if (status === 'critical') return 'critical';
+  if (status === 'warning') return 'warning';
+  return null;
+}
+
+function thresholdCandidate(params: {
+  domainKey: string;
+  metricKey: string;
+  label: string;
+  value: number | null;
+  unit: string;
+  warning: number;
+  critical: number;
+}): IncidentCandidate {
+  const status = thresholdStatus(params.value, {
+    warning: params.warning,
+    critical: params.critical,
+  });
+  const severity = severityFromStatus(status);
+
+  return {
+    active: status === 'unknown' ? null : severity !== null,
+    source: 'threshold',
+    domainKey: params.domainKey,
+    incidentKey: `threshold:${params.domainKey}:${params.metricKey}`,
+    title: `${params.label} melewati threshold`,
+    severity: severity || 'warning',
+    entityType: 'metric',
+    entityKey: params.metricKey,
+    entityLabel: params.label,
+    metadata: {
+      value: params.value,
+      unit: params.unit,
+      warning: params.warning,
+      critical: params.critical,
+      status,
+    },
+  };
+}
+
+function buildThresholdIncidentCandidates(snapshot: Awaited<ReturnType<typeof collectCurrentState>>): IncidentCandidate[] {
+  const thresholds = getMonitoringThresholds();
+  const candidates: IncidentCandidate[] = [
+    thresholdCandidate({
+      domainKey: 'server',
+      metricKey: 'cpu_usage_percent',
+      label: 'CPU server',
+      value: snapshot.server.cpuUsage,
+      unit: 'percent',
+      ...thresholds.server.cpuUsagePercent,
+    }),
+    thresholdCandidate({
+      domainKey: 'server',
+      metricKey: 'ram_usage_percent',
+      label: 'RAM server',
+      value: snapshot.server.ramUsage,
+      unit: 'percent',
+      ...thresholds.server.ramUsagePercent,
+    }),
+    thresholdCandidate({
+      domainKey: 'server',
+      metricKey: 'disk_root_usage_percent',
+      label: 'Disk root server',
+      value: snapshot.server.diskUsage,
+      unit: 'percent',
+      ...thresholds.server.diskUsagePercent,
+    }),
+    thresholdCandidate({
+      domainKey: 'server',
+      metricKey: 'load1',
+      label: 'Load average 1 menit',
+      value: snapshot.server.load1,
+      unit: 'load',
+      ...thresholds.server.load1,
+    }),
+    thresholdCandidate({
+      domainKey: 'server',
+      metricKey: 'temperature_celsius',
+      label: 'Suhu server',
+      value: snapshot.server.temperatureCelsius,
+      unit: 'celsius',
+      ...thresholds.server.temperatureCelsius,
+    }),
+    thresholdCandidate({
+      domainKey: 'mikrotik',
+      metricKey: 'temperature_celsius',
+      label: 'Suhu MikroTik',
+      value: snapshot.mikrotikTemperature.temperatureCelsius,
+      unit: 'celsius',
+      ...thresholds.mikrotik.temperatureCelsius,
+    }),
+  ];
+
+  for (const target of [
+    snapshot.network.gateway,
+    snapshot.network.googleDns,
+    snapshot.network.cloudflareDns,
+    ...snapshot.network.additionalTargets,
+  ]) {
+    const key = target.target.replace(/[^a-z0-9_.-]/gi, '_');
+    candidates.push(thresholdCandidate({
+      domainKey: target.category || 'network',
+      metricKey: `latency_ms:${key}`,
+      label: `Latency ${target.label || target.target}`,
+      value: target.latencyMs,
+      unit: 'ms',
+      ...thresholds.network.pingMs,
+    }));
+  }
+
+  return candidates;
+}
+
+function targetIncidentCandidate(target: ReturnType<typeof buildTargets>[number]): IncidentCandidate {
+  const incidentKey = `target:${target.job}:${target.instance}`;
+  return {
+    active: target.up === null ? null : !target.up,
+    source: 'prometheus',
+    domainKey: 'prometheus',
+    incidentKey,
+    title: `Target down: ${target.job} / ${target.instance}`,
+    severity: 'critical',
+    entityType: 'target',
+    entityKey: incidentKey,
+    entityLabel: `${target.job} / ${target.instance}`,
+    metadata: {
+      value: target.value,
+      lastChecked: target.lastChecked,
+    },
+  };
+}
+
+function candidateToAlertSnapshot(
+  candidate: IncidentCandidate,
+  status: 'open' | 'resolved',
+  startedAtIso: string,
+  resolvedAtIso: string | null = null,
+): AlertIncidentSnapshot {
+  return {
+    incidentKey: candidate.incidentKey,
+    title: candidate.title,
+    severity: candidate.severity,
+    status,
+    source: candidate.source,
+    domainKey: candidate.domainKey,
+    entityType: candidate.entityType,
+    entityKey: candidate.entityKey,
+    entityLabel: candidate.entityLabel,
+    startedAt: startedAtIso,
+    resolvedAt: resolvedAtIso,
+    metadata: candidate.metadata,
+  };
+}
+
+function openRowToAlertSnapshot(
+  row: Awaited<ReturnType<typeof getOpenIncidentMap>> extends Map<string, infer T> ? T : never,
+  resolvedAtIso: string,
+): AlertIncidentSnapshot {
+  return {
+    incidentKey: row.incident_key,
+    title: row.title,
+    severity: row.severity,
+    status: 'resolved',
+    source: row.source,
+    domainKey: row.domain_key,
+    entityType: row.entity_type,
+    entityKey: row.entity_key,
+    entityLabel: row.entity_label,
+    startedAt: toIsoString(row.started_at) as string,
+    resolvedAt: resolvedAtIso,
+    metadata: safeJsonParse(row.metadata_json),
+  };
+}
+
+async function processIncidentCandidate(
+  candidate: IncidentCandidate,
+  openIncidents: Awaited<ReturnType<typeof getOpenIncidentMap>>,
+  timestamp: string,
+) {
+  const openIncident = openIncidents.get(candidate.incidentKey);
+
+  if (candidate.active === true && !openIncident) {
+    const inserted = await insertIncident({
+      source: candidate.source,
+      domainKey: candidate.domainKey,
+      incidentKey: candidate.incidentKey,
+      title: candidate.title,
+      severity: candidate.severity,
+      entityType: candidate.entityType,
+      entityKey: candidate.entityKey,
+      entityLabel: candidate.entityLabel,
+      startedAtIso: timestamp,
+      metadata: candidate.metadata,
+    });
+
+    if (!inserted) return { opened: 0, resolved: 0 };
+
+    await dispatchIncidentAlert('opened', candidateToAlertSnapshot(candidate, 'open', timestamp));
+    return { opened: 1, resolved: 0 };
+  }
+
+  if (candidate.active === false && openIncident) {
+    await resolveIncident(openIncident.id, openIncident.started_at, timestamp, {
+      resolution: 'Condition recovered',
+      latest: candidate.metadata,
+    });
+    await dispatchIncidentAlert('resolved', openRowToAlertSnapshot(openIncident, timestamp));
+    return { opened: 0, resolved: 1 };
+  }
+
+  return { opened: 0, resolved: 0 };
+}
+
 export async function runHistoryCollection() {
   if (!isDatabaseConfigured()) {
     return {
@@ -576,37 +934,15 @@ export async function runHistoryCollection() {
   let resolvedCount = 0;
   let auditCount = 0;
 
-  for (const target of snapshot.targets) {
-    const incidentKey = `target:${target.job}:${target.instance}`;
-    const openIncident = openIncidents.get(incidentKey);
+  const incidentCandidates = [
+    ...snapshot.targets.map(targetIncidentCandidate),
+    ...buildThresholdIncidentCandidates(snapshot),
+  ];
 
-    if (!target.up && !openIncident) {
-      await insertIncident({
-        source: 'prometheus',
-        domainKey: 'prometheus',
-        incidentKey,
-        title: `Target down: ${target.job} / ${target.instance}`,
-        severity: 'critical',
-        entityType: 'target',
-        entityKey: incidentKey,
-        entityLabel: `${target.job} / ${target.instance}`,
-        startedAtIso: snapshot.timestamp,
-        metadata: {
-          value: target.value,
-          lastChecked: target.lastChecked,
-        },
-      });
-      openedCount += 1;
-      continue;
-    }
-
-    if (target.up && openIncident) {
-      await resolveIncident(openIncident.id, openIncident.started_at, snapshot.timestamp, {
-        resolution: 'Target responded again',
-        lastChecked: target.lastChecked,
-      });
-      resolvedCount += 1;
-    }
+  for (const candidate of incidentCandidates) {
+    const result = await processIncidentCandidate(candidate, openIncidents, snapshot.timestamp);
+    openedCount += result.opened;
+    resolvedCount += result.resolved;
   }
 
   const previousRebootState = await getStoredState<{ rebootRequired: boolean | null }>('server:reboot-required');
@@ -750,6 +1086,9 @@ export async function listIncidents(limit = 100) {
     started_at: Date | string;
     resolved_at: Date | string | null;
     duration_seconds: number | null;
+    acknowledged_at: Date | string | null;
+    acknowledged_by: string | null;
+    acknowledgement_note: string | null;
     metadata_json: string | null;
     created_at: Date | string;
     updated_at: Date | string;
@@ -774,10 +1113,120 @@ export async function listIncidents(limit = 100) {
     startedAt: toIsoString(row.started_at) as string,
     resolvedAt: toIsoString(row.resolved_at) as string | null,
     durationSeconds: row.duration_seconds,
+    acknowledgedAt: toIsoString(row.acknowledged_at) as string | null,
+    acknowledgedBy: row.acknowledged_by,
+    acknowledgementNote: row.acknowledgement_note,
     metadata: safeJsonParse(row.metadata_json),
     createdAt: toIsoString(row.created_at) as string,
     updatedAt: toIsoString(row.updated_at) as string,
   })) satisfies IncidentRecord[];
+}
+
+async function getIncidentById(id: number) {
+  const rows = await queryRows<RowDataPacket & {
+    id: number;
+    source: string;
+    domain_key: string;
+    incident_key: string;
+    title: string;
+    status: IncidentStatus;
+    severity: IncidentSeverity;
+    entity_type: string;
+    entity_key: string;
+    entity_label: string;
+    started_at: Date | string;
+    resolved_at: Date | string | null;
+    duration_seconds: number | null;
+    acknowledged_at: Date | string | null;
+    acknowledged_by: string | null;
+    acknowledgement_note: string | null;
+    metadata_json: string | null;
+    created_at: Date | string;
+    updated_at: Date | string;
+  }>(
+    'SELECT * FROM monitoring_incidents WHERE id = ? LIMIT 1',
+    [id],
+  );
+
+  const row = rows[0];
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    source: row.source,
+    domainKey: row.domain_key,
+    incidentKey: row.incident_key,
+    title: row.title,
+    status: row.status,
+    severity: row.severity,
+    entityType: row.entity_type,
+    entityKey: row.entity_key,
+    entityLabel: row.entity_label,
+    startedAt: toIsoString(row.started_at) as string,
+    resolvedAt: toIsoString(row.resolved_at) as string | null,
+    durationSeconds: row.duration_seconds,
+    acknowledgedAt: toIsoString(row.acknowledged_at) as string | null,
+    acknowledgedBy: row.acknowledged_by,
+    acknowledgementNote: row.acknowledgement_note,
+    metadata: safeJsonParse(row.metadata_json),
+    createdAt: toIsoString(row.created_at) as string,
+    updatedAt: toIsoString(row.updated_at) as string,
+  } satisfies IncidentRecord;
+}
+
+export async function acknowledgeIncident(params: {
+  id: number;
+  actor: string;
+  note: string | null;
+}) {
+  await ensureMonitoringSchema();
+
+  const acknowledgedAtIso = nowIso();
+  const actor = params.actor.trim().slice(0, 191);
+  const note = params.note?.trim().slice(0, 255) || null;
+  const [result] = await getPool().execute<ResultSetHeader>(
+    `UPDATE monitoring_incidents
+     SET acknowledged_at = COALESCE(acknowledged_at, ?),
+         acknowledged_by = COALESCE(acknowledged_by, ?),
+         acknowledgement_note = COALESCE(acknowledgement_note, ?)
+     WHERE id = ? AND status = 'open'`,
+    [toMysqlDateTime(acknowledgedAtIso), actor, note, params.id],
+  );
+
+  const incident = await getIncidentById(params.id);
+  if (!incident) {
+    return {
+      ok: false,
+      message: 'Incident tidak ditemukan.',
+      incident: null,
+      changed: false,
+    };
+  }
+
+  const changed = result.affectedRows > 0 && incident.acknowledgedBy === actor;
+  if (changed) {
+    await insertAuditEvent({
+      eventType: 'incident_acknowledged',
+      source: 'operator',
+      severity: 'info',
+      entityKey: incident.incidentKey,
+      entityLabel: incident.entityLabel,
+      message: `Incident ${incident.entityLabel} di-acknowledge oleh ${actor}.`,
+      payload: {
+        incidentId: incident.id,
+        incidentKey: incident.incidentKey,
+        note,
+      },
+      eventAtIso: acknowledgedAtIso,
+    });
+  }
+
+  return {
+    ok: incident.status === 'open',
+    message: incident.status === 'open' ? 'Incident sudah di-acknowledge.' : 'Incident sudah resolved dan tidak bisa di-acknowledge.',
+    incident,
+    changed,
+  };
 }
 
 export async function listAuditEvents(limit = 100) {

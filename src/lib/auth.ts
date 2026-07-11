@@ -40,20 +40,24 @@ export async function createSessionValue(username: string) {
   return `${payload}.${signature}`;
 }
 
-export async function verifySessionValue(value: string | undefined) {
-  if (!value) return false;
+export async function getSessionUsername(value: string | undefined) {
+  if (!value) return null;
   const parts = value.split('.');
-  if (parts.length !== 3) return false;
+  if (parts.length !== 3) return null;
 
   const [encodedUser, expiresAtRaw, signature] = parts;
   const expectedUser = process.env.DASHBOARD_BASIC_USER;
   const expiresAt = Number.parseInt(expiresAtRaw, 10);
 
-  if (!expectedUser || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) return false;
+  if (!expectedUser || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) return null;
 
   const payload = `${encodedUser}.${expiresAtRaw}`;
   const expectedSignature = await signPayload(payload);
   const username = decodeURIComponent(encodedUser);
 
-  return username === expectedUser && safeEqual(signature, expectedSignature);
+  return username === expectedUser && safeEqual(signature, expectedSignature) ? username : null;
+}
+
+export async function verifySessionValue(value: string | undefined) {
+  return (await getSessionUsername(value)) !== null;
 }
