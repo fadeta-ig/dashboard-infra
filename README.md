@@ -62,11 +62,13 @@ DASHBOARD_SESSION_SECRET=gunakan-secret-session-yang-berbeda
 # Untuk HTTPS publik, kosongkan atau isi true.
 DASHBOARD_COOKIE_SECURE=
 APP_BASE_URL=http://127.0.0.1:3000
+APP_TIME_ZONE=Asia/Jakarta
 OPS_INTERNAL_TOKEN=gunakan-token-internal-panjang-acak
 HISTORY_COLLECT_INTERVAL_MS=60000
 ALERT_WEBHOOK_URL=
 ALERT_WEBHOOK_TOKEN=
 ALERT_COOLDOWN_MS=900000
+ALERT_TIME_ZONE=Asia/Jakarta
 ALERT_EMAIL_SMTP_HOST=
 ALERT_EMAIL_SMTP_PORT=587
 ALERT_EMAIL_SMTP_SECURE=false
@@ -268,6 +270,7 @@ P0 hardening yang sudah aktif:
 - Collector mengirim alert lifecycle `opened`, `resolved`, dan `acknowledged` ke webhook generik, email SMTP, dan WhatsApp jika channel terkait dikonfigurasi.
 - Alert delivery dicatat ke `monitoring_alert_deliveries` dengan status `sent`, `failed`, atau `skipped`.
 - Cooldown alert dikendalikan oleh `ALERT_COOLDOWN_MS` default 900000 ms.
+- Waktu alert diformat memakai `ALERT_TIME_ZONE` atau `APP_TIME_ZONE`; default `Asia/Jakarta`.
 
 Payload webhook alert berbentuk JSON dan menyertakan `eventType`, `generatedAt`, serta detail incident. Jika `ALERT_WEBHOOK_TOKEN` diisi, dashboard mengirim header `Authorization: Bearer <token>`.
 

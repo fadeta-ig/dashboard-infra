@@ -52,9 +52,14 @@ export function getPool() {
       user: config.user as string,
       password: config.password || undefined,
       database: config.database as string,
+      timezone: 'Z',
+      dateStrings: ['DATE', 'DATETIME', 'TIMESTAMP'],
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
+    });
+    pool.on('connection', (connection) => {
+      void connection.query("SET time_zone = '+00:00'");
     });
   }
 

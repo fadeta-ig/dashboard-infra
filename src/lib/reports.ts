@@ -7,6 +7,7 @@ import { executeStatement, getDatabaseUnavailableReason, isDatabaseConfigured, q
 import { buildTargets, PROMQL } from '@/lib/metrics';
 import { prometheusInstantQuery } from '@/lib/prometheus';
 import type { IncidentStatus } from '@/lib/history';
+import { mysqlDateTimeToIsoString as toIsoString, toMysqlDateTime } from '@/lib/time';
 
 export interface MonthlyReportTargetAvailability {
   targetKey: string;
@@ -250,15 +251,6 @@ function toNumber(value: number | string | null | undefined) {
   if (value === null || value === undefined) return null;
   const parsed = typeof value === 'number' ? value : Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function toIsoString(value: Date | string | null | undefined) {
-  if (!value) return null;
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
-}
-
-function toMysqlDateTime(value: string) {
-  return value.slice(0, 19).replace('T', ' ');
 }
 
 export function normalizeReportMonth(rawMonth: string | null | undefined) {

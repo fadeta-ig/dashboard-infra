@@ -7,6 +7,7 @@ import { prometheusInstantQuery, prometheusRangeQuery } from '@/lib/prometheus';
 import { getReadinessSnapshot } from '@/lib/readiness';
 import { getServiceHealthSnapshot } from '@/lib/service-health';
 import { getMonitoringThresholds, thresholdStatus } from '@/lib/thresholds';
+import { mysqlDateTimeToIsoString as toIsoString, toMysqlDateTime, utcDateKey as toDateKey } from '@/lib/time';
 
 export type IncidentSeverity = 'warning' | 'critical';
 export type IncidentStatus = 'open' | 'resolved';
@@ -174,10 +175,6 @@ const SCHEMA_STATEMENTS = [
   )`,
 ];
 
-function toMysqlDateTime(value: string) {
-  return value.slice(0, 19).replace('T', ' ');
-}
-
 function safeJsonParse(value: unknown) {
   if (typeof value !== 'string') return {};
   try {
@@ -185,15 +182,6 @@ function safeJsonParse(value: unknown) {
   } catch {
     return {};
   }
-}
-
-function toIsoString(value: Date | string | null | undefined) {
-  if (!value) return value ?? null;
-  return value instanceof Date ? value.toISOString() : value;
-}
-
-function toDateKey(value: string) {
-  return value.slice(0, 10);
 }
 
 function round(value: number, digits = 2) {

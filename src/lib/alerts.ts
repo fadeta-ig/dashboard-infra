@@ -2,9 +2,11 @@ import nodemailer from 'nodemailer';
 import type { RowDataPacket } from 'mysql2/promise';
 import { executeStatement, queryRows } from '@/lib/db';
 import { nowIso } from '@/lib/metrics';
+import { toMysqlDateTime } from '@/lib/time';
 
 const ALERT_TIMEOUT_MS = 5000;
 const DEFAULT_ALERT_COOLDOWN_MS = 15 * 60 * 1000;
+const DEFAULT_ALERT_TIME_ZONE = 'Asia/Jakarta';
 
 export type AlertEventType = 'opened' | 'resolved' | 'acknowledged';
 export type AlertSeverity = 'warning' | 'critical';
@@ -77,14 +79,31 @@ function formatMetadata(metadata: Record<string, unknown> | undefined) {
   return entries.map(([key, value]) => `${key}: ${String(value)}`).join('\n');
 }
 
+function formatAlertTimestamp(value: string | null | undefined) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('id-ID', {
+    timeZone: process.env.ALERT_TIME_ZONE || process.env.APP_TIME_ZONE || DEFAULT_ALERT_TIME_ZONE,
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+    timeZoneName: 'short',
+  }).format(date);
+}
+
 function buildPlainTextMessage(eventType: AlertEventType, incident: AlertIncidentSnapshot) {
   return [
     `[${eventLabel(eventType)}] ${incident.severity.toUpperCase()} - ${incident.title}`,
     `Entity: ${incident.entityLabel}`,
     `Domain: ${incident.domainKey}`,
     `Status: ${incident.status}`,
-    `Started: ${incident.startedAt}`,
-    incident.resolvedAt ? `Resolved: ${incident.resolvedAt}` : null,
+    `Started: ${formatAlertTimestamp(incident.startedAt)}`,
+    incident.resolvedAt ? `Resolved: ${formatAlertTimestamp(incident.resolvedAt)}` : null,
     incident.acknowledgedBy ? `Ack by: ${incident.acknowledgedBy}` : null,
     incident.acknowledgementNote ? `Ack note: ${incident.acknowledgementNote}` : null,
     `Key: ${incident.incidentKey}`,
@@ -100,8 +119,8 @@ function buildEmailHtml(eventType: AlertEventType, incident: AlertIncidentSnapsh
     ['Entity', incident.entityLabel],
     ['Domain', incident.domainKey],
     ['Status', incident.status],
-    ['Started', incident.startedAt],
-    ['Resolved', incident.resolvedAt || '-'],
+    ['Started', formatAlertTimestamp(incident.startedAt)],
+    ['Resolved', formatAlertTimestamp(incident.resolvedAt)],
     ['Ack By', incident.acknowledgedBy || '-'],
     ['Ack Note', incident.acknowledgementNote || '-'],
     ['Incident Key', incident.incidentKey],
@@ -165,7 +184,7 @@ async function insertDelivery(params: {
       params.status,
       params.attempts,
       params.lastError,
-      params.deliveredAtIso ? params.deliveredAtIso.slice(0, 19).replace('T', ' ') : null,
+      params.deliveredAtIso ? toMysqlDateTime(params.deliveredAtIso) : null,
       JSON.stringify(params.payload),
     ],
   );
