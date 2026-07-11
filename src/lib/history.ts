@@ -361,8 +361,24 @@ async function insertIncident(params: {
   return result.affectedRows > 0;
 }
 
+async function updateOpenIncident(params: {
+  id: number;
+  title: string;
+  severity: IncidentSeverity;
+  metadata: Record<string, unknown>;
+}) {
+  await executeStatement(
+    `UPDATE monitoring_incidents
+     SET title = ?,
+         severity = ?,
+         metadata_json = ?
+     WHERE id = ? AND status = 'open'`,
+    [params.title, params.severity, JSON.stringify(params.metadata), params.id],
+  );
+}
+
 async function resolveIncident(id: number, startedAt: Date | string, resolvedAtIso: string, metadata: Record<string, unknown>) {
-  const started = new Date(startedAt);
+  const started = new Date(toIsoString(startedAt) as string);
   const resolved = new Date(resolvedAtIso);
   const durationSeconds = Math.max(0, Math.round((resolved.getTime() - started.getTime()) / 1000));
   await executeStatement(
@@ -690,6 +706,50 @@ interface IncidentCandidate {
   entityKey: string;
   entityLabel: string;
   metadata: Record<string, unknown>;
+  notifyOnOpen?: boolean;
+  notifyOnResolved?: boolean;
+}
+
+interface LatencyToleranceState {
+  active: boolean;
+  activeSinceIso: string | null;
+  lastSeenIso: string | null;
+  lastStatus: string | null;
+  lastValue: number | null;
+}
+
+const DEFAULT_LATENCY_TOLERANT_DOMAINS = ['fingerprint', 'cctv'];
+const DEFAULT_LATENCY_TOLERANT_WARNING_AFTER_MS = 5 * 60 * 1000;
+const DEFAULT_LATENCY_TOLERANT_CRITICAL_AFTER_MS = 8 * 60 * 60 * 1000;
+
+function readDurationMs(name: string, fallback: number) {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function readCsvEnv(name: string, fallback: string[]) {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const values = raw
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  return values.length > 0 ? values : fallback;
+}
+
+function latencyToleranceConfig() {
+  return {
+    domains: readCsvEnv('THRESHOLD_NETWORK_LATENCY_TOLERANT_DOMAINS', DEFAULT_LATENCY_TOLERANT_DOMAINS),
+    warningAfterMs: readDurationMs('THRESHOLD_NETWORK_LATENCY_TOLERANT_WARNING_AFTER_MS', DEFAULT_LATENCY_TOLERANT_WARNING_AFTER_MS),
+    criticalAfterMs: readDurationMs('THRESHOLD_NETWORK_LATENCY_TOLERANT_CRITICAL_AFTER_MS', DEFAULT_LATENCY_TOLERANT_CRITICAL_AFTER_MS),
+  };
+}
+
+function isLatencyToleranceCandidate(candidate: IncidentCandidate) {
+  if (candidate.source !== 'threshold' || !candidate.entityKey.startsWith('latency_ms:')) return false;
+  return latencyToleranceConfig().domains.includes(candidate.domainKey.toLowerCase());
 }
 
 function severityFromStatus(status: 'healthy' | 'warning' | 'critical' | 'unknown') {
@@ -793,14 +853,25 @@ function buildThresholdIncidentCandidates(snapshot: Awaited<ReturnType<typeof co
     ...snapshot.network.additionalTargets,
   ]) {
     const key = target.target.replace(/[^a-z0-9_.-]/gi, '_');
-    candidates.push(thresholdCandidate({
+    const candidate = thresholdCandidate({
       domainKey: target.category || 'network',
       metricKey: `latency_ms:${key}`,
       label: `Latency ${target.label || target.target}`,
       value: target.latencyMs,
       unit: 'ms',
       ...thresholds.network.pingMs,
-    }));
+    });
+    candidate.metadata = {
+      ...candidate.metadata,
+      target: target.target,
+      targetUp: target.up,
+    };
+    if (target.up === false && target.latencyMs === null) {
+      candidate.active = true;
+      candidate.severity = 'critical';
+      candidate.metadata.status = 'timeout';
+    }
+    candidates.push(candidate);
   }
 
   return candidates;
@@ -867,11 +938,107 @@ function openRowToAlertSnapshot(
   };
 }
 
+async function applyLatencyTolerance(candidate: IncidentCandidate, timestamp: string): Promise<IncidentCandidate> {
+  if (!isLatencyToleranceCandidate(candidate)) return candidate;
+
+  const config = latencyToleranceConfig();
+  const stateKey = `latency:tolerance:${candidate.incidentKey}`;
+  const currentStatus = String(candidate.metadata.status || 'unknown');
+
+  if (candidate.active !== true) {
+    await setStoredState(stateKey, {
+      active: false,
+      activeSinceIso: null,
+      lastSeenIso: timestamp,
+      lastStatus: currentStatus,
+      lastValue: typeof candidate.metadata.value === 'number' ? candidate.metadata.value : null,
+    } satisfies LatencyToleranceState);
+    return {
+      ...candidate,
+      metadata: {
+        ...candidate.metadata,
+        tolerance: {
+          enabled: true,
+          resetAt: timestamp,
+          warningAfterMs: config.warningAfterMs,
+          criticalAfterMs: config.criticalAfterMs,
+        },
+      },
+    };
+  }
+
+  const previousState = await getStoredState<LatencyToleranceState>(stateKey);
+  const activeSinceIso = previousState?.active && previousState.activeSinceIso ? previousState.activeSinceIso : timestamp;
+  const badForMs = Math.max(0, new Date(timestamp).getTime() - new Date(activeSinceIso).getTime());
+  const latestValue = typeof candidate.metadata.value === 'number' ? candidate.metadata.value : null;
+  await setStoredState(stateKey, {
+    active: true,
+    activeSinceIso,
+    lastSeenIso: timestamp,
+    lastStatus: currentStatus,
+    lastValue: latestValue,
+  } satisfies LatencyToleranceState);
+
+  const toleranceMetadata = {
+    enabled: true,
+    activeSince: activeSinceIso,
+    badForSeconds: Math.round(badForMs / 1000),
+    warningAfterMs: config.warningAfterMs,
+    criticalAfterMs: config.criticalAfterMs,
+  };
+
+  if (badForMs < config.warningAfterMs) {
+    return {
+      ...candidate,
+      active: null,
+      severity: 'warning',
+      metadata: {
+        ...candidate.metadata,
+        status: 'suppressed_flap',
+        tolerance: toleranceMetadata,
+      },
+      notifyOnOpen: false,
+      notifyOnResolved: false,
+    };
+  }
+
+  if (badForMs < config.criticalAfterMs) {
+    return {
+      ...candidate,
+      active: true,
+      severity: 'warning',
+      title: `${candidate.entityLabel} tidak stabil`,
+      metadata: {
+        ...candidate.metadata,
+        status: 'warning',
+        tolerance: toleranceMetadata,
+      },
+      notifyOnOpen: false,
+      notifyOnResolved: false,
+    };
+  }
+
+  return {
+    ...candidate,
+    active: true,
+    severity: 'critical',
+    title: `${candidate.entityLabel} timeout lebih dari ${Math.round(config.criticalAfterMs / 3_600_000)} jam`,
+    metadata: {
+      ...candidate.metadata,
+      status: 'critical_timeout',
+      tolerance: toleranceMetadata,
+    },
+    notifyOnOpen: true,
+    notifyOnResolved: true,
+  };
+}
+
 async function processIncidentCandidate(
-  candidate: IncidentCandidate,
+  rawCandidate: IncidentCandidate,
   openIncidents: Awaited<ReturnType<typeof getOpenIncidentMap>>,
   timestamp: string,
 ) {
+  const candidate = await applyLatencyTolerance(rawCandidate, timestamp);
   const openIncident = openIncidents.get(candidate.incidentKey);
 
   if (candidate.active === true && !openIncident) {
@@ -890,8 +1057,28 @@ async function processIncidentCandidate(
 
     if (!inserted) return { opened: 0, resolved: 0 };
 
-    await dispatchIncidentAlert('opened', candidateToAlertSnapshot(candidate, 'open', timestamp));
+    if (candidate.notifyOnOpen !== false) {
+      await dispatchIncidentAlert('opened', candidateToAlertSnapshot(candidate, 'open', timestamp));
+    }
     return { opened: 1, resolved: 0 };
+  }
+
+  if (candidate.active === true && openIncident) {
+    if (openIncident.severity !== candidate.severity || openIncident.title !== candidate.title) {
+      await updateOpenIncident({
+        id: openIncident.id,
+        title: candidate.title,
+        severity: candidate.severity,
+        metadata: candidate.metadata,
+      });
+      if (candidate.notifyOnOpen !== false && candidate.severity === 'critical' && openIncident.severity !== 'critical') {
+        await dispatchIncidentAlert(
+          'opened',
+          candidateToAlertSnapshot(candidate, 'open', toIsoString(openIncident.started_at) as string),
+        );
+      }
+    }
+    return { opened: 0, resolved: 0 };
   }
 
   if (candidate.active === false && openIncident) {
@@ -899,7 +1086,9 @@ async function processIncidentCandidate(
       resolution: 'Condition recovered',
       latest: candidate.metadata,
     });
-    await dispatchIncidentAlert('resolved', openRowToAlertSnapshot(openIncident, timestamp));
+    if (candidate.notifyOnResolved !== false) {
+      await dispatchIncidentAlert('resolved', openRowToAlertSnapshot(openIncident, timestamp));
+    }
     return { opened: 0, resolved: 1 };
   }
 

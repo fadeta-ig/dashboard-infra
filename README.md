@@ -199,6 +199,9 @@ THRESHOLD_SERVER_LOAD1_WARNING=2
 THRESHOLD_SERVER_LOAD1_CRITICAL=4
 THRESHOLD_NETWORK_PING_MS_WARNING=50
 THRESHOLD_NETWORK_PING_MS_CRITICAL=100
+THRESHOLD_NETWORK_LATENCY_TOLERANT_DOMAINS=fingerprint,cctv
+THRESHOLD_NETWORK_LATENCY_TOLERANT_WARNING_AFTER_MS=300000
+THRESHOLD_NETWORK_LATENCY_TOLERANT_CRITICAL_AFTER_MS=28800000
 THRESHOLD_NETWORK_JITTER_MS_WARNING=10
 THRESHOLD_NETWORK_JITTER_MS_CRITICAL=30
 THRESHOLD_NETWORK_PACKET_LOSS_PERCENT_WARNING=1
@@ -271,6 +274,7 @@ P0 hardening yang sudah aktif:
 - Alert delivery dicatat ke `monitoring_alert_deliveries` dengan status `sent`, `failed`, atau `skipped`.
 - Cooldown alert dikendalikan oleh `ALERT_COOLDOWN_MS` default 900000 ms.
 - Waktu alert diformat memakai `ALERT_TIME_ZONE` atau `APP_TIME_ZONE`; default `Asia/Jakarta`.
+- Domain latency yang dikenal flapping, default `fingerprint,cctv`, memakai toleransi khusus: flapping singkat tidak dibuat incident, warning tidak mengirim notif, dan critical baru dikirim setelah `THRESHOLD_NETWORK_LATENCY_TOLERANT_CRITICAL_AFTER_MS`.
 
 Payload webhook alert berbentuk JSON dan menyertakan `eventType`, `generatedAt`, serta detail incident. Jika `ALERT_WEBHOOK_TOKEN` diisi, dashboard mengirim header `Authorization: Bearer <token>`.
 
