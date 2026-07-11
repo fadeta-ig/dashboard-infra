@@ -1,12 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, RefreshCcw, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, RefreshCcw, Search, ShieldAlert } from 'lucide-react';
 import { format, formatDistanceStrict } from 'date-fns';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';
 import { PaginationControls } from '@/components/dashboard/pagination-controls';
+import { SortHeaderButton } from '@/components/dashboard/sort-header-button';
 import { getErrorMessage } from '@/lib/metrics';
-import { DEFAULT_PAGE_SIZE, type PaginationMeta } from '@/lib/pagination';
+import { type PaginationMeta } from '@/lib/pagination';
+import { useStoredPageSize } from '@/lib/use-stored-page-size';
 
 interface IncidentRecord {
   id: number;
@@ -43,6 +45,9 @@ interface IncidentsResponse {
   };
 }
 
+type IncidentSort = 'startedAt' | 'title' | 'domain' | 'severity' | 'status' | 'resolvedAt' | 'duration' | 'ack';
+type SortDirection = 'asc' | 'desc';
+
 function severityText(severity: IncidentRecord['severity']) {
   return severity === 'critical' ? 'Critical' : 'Warning';
 }
@@ -66,8 +71,11 @@ export default function IncidentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'resolved'>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState<IncidentSort>('startedAt');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [pageSize, setPageSize] = useStoredPageSize('incidents');
   const [ackingId, setAckingId] = useState<number | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -75,8 +83,11 @@ export default function IncidentsPage() {
       const params = new URLSearchParams({
         page: String(page),
         pageSize: String(pageSize),
+        sort: sortBy,
+        direction: sortDirection,
       });
       if (statusFilter !== 'all') params.set('status', statusFilter);
+      if (searchTerm.trim()) params.set('search', searchTerm.trim());
       const response = await fetch(`/api/ops/history/incidents?${params.toString()}`, { cache: 'no-store' });
       if (!response.ok) throw new Error('Failed to fetch incident history');
       const json = (await response.json()) as IncidentsResponse;
@@ -88,7 +99,17 @@ export default function IncidentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, statusFilter]);
+  }, [page, pageSize, searchTerm, sortBy, sortDirection, statusFilter]);
+
+  const handleSort = (sortKey: IncidentSort) => {
+    if (sortKey === sortBy) {
+      setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(sortKey);
+      setSortDirection(sortKey === 'startedAt' || sortKey === 'duration' ? 'desc' : 'asc');
+    }
+    setPage(1);
+  };
 
   const acknowledge = async (incident: IncidentRecord) => {
     const note = window.prompt('Catatan acknowledgement opsional:', incident.acknowledgementNote || '');
@@ -223,6 +244,37 @@ export default function IncidentsPage() {
             </div>
           </div>
         </div>
+        <div className="grid gap-3 border-b border-border bg-white/40 px-5 py-4 lg:grid-cols-[minmax(260px,1fr)_220px]">
+          <label className="relative block">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={searchTerm}
+              onChange={(event) => {
+                setSearchTerm(event.target.value);
+                setPage(1);
+              }}
+              placeholder="Cari incident, domain, entity, IP, atau source..."
+              className="w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground hover:bg-muted/40 focus:border-slate-400"
+            />
+          </label>
+          <select
+            value={`${sortBy}:${sortDirection}`}
+            onChange={(event) => {
+              const [nextSort, nextDirection] = event.target.value.split(':') as [IncidentSort, SortDirection];
+              setSortBy(nextSort);
+              setSortDirection(nextDirection);
+              setPage(1);
+            }}
+            className="rounded-md border border-border bg-card px-3 py-2 text-sm outline-none transition-colors hover:bg-muted/40 focus:border-slate-400"
+            aria-label="Urutkan incident"
+          >
+            <option value="startedAt:desc">Terbaru dulu</option>
+            <option value="startedAt:asc">Terlama dulu</option>
+            <option value="severity:desc">Severity tertinggi</option>
+            <option value="duration:desc">Durasi terlama</option>
+            <option value="title:asc">Incident A-Z</option>
+          </select>
+        </div>
 
         <div className="grid gap-3 p-4 md:hidden">
           {incidents.map((incident) => (
@@ -284,14 +336,30 @@ export default function IncidentsPage() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-border bg-muted/50 text-xs uppercase text-muted-foreground">
               <tr>
-                <th className="px-5 py-4 font-medium">Incident</th>
-                <th className="px-5 py-4 font-medium">Domain</th>
-                <th className="px-5 py-4 font-medium">Severity</th>
-                <th className="px-5 py-4 font-medium">Status</th>
-                <th className="px-5 py-4 font-medium">Started</th>
-                <th className="px-5 py-4 font-medium">Resolved</th>
-                <th className="px-5 py-4 font-medium">Duration</th>
-                <th className="px-5 py-4 font-medium">Ack</th>
+                <th className="px-5 py-4 font-medium">
+                  <SortHeaderButton label="Incident" sortKey="title" activeSort={sortBy} direction={sortDirection} onSort={handleSort} />
+                </th>
+                <th className="px-5 py-4 font-medium">
+                  <SortHeaderButton label="Domain" sortKey="domain" activeSort={sortBy} direction={sortDirection} onSort={handleSort} />
+                </th>
+                <th className="px-5 py-4 font-medium">
+                  <SortHeaderButton label="Severity" sortKey="severity" activeSort={sortBy} direction={sortDirection} onSort={handleSort} />
+                </th>
+                <th className="px-5 py-4 font-medium">
+                  <SortHeaderButton label="Status" sortKey="status" activeSort={sortBy} direction={sortDirection} onSort={handleSort} />
+                </th>
+                <th className="px-5 py-4 font-medium">
+                  <SortHeaderButton label="Started" sortKey="startedAt" activeSort={sortBy} direction={sortDirection} onSort={handleSort} />
+                </th>
+                <th className="px-5 py-4 font-medium">
+                  <SortHeaderButton label="Resolved" sortKey="resolvedAt" activeSort={sortBy} direction={sortDirection} onSort={handleSort} />
+                </th>
+                <th className="px-5 py-4 font-medium">
+                  <SortHeaderButton label="Duration" sortKey="duration" activeSort={sortBy} direction={sortDirection} onSort={handleSort} />
+                </th>
+                <th className="px-5 py-4 font-medium">
+                  <SortHeaderButton label="Ack" sortKey="ack" activeSort={sortBy} direction={sortDirection} onSort={handleSort} />
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

@@ -24,7 +24,10 @@ export async function GET(request: NextRequest) {
   const page = Number.parseInt(searchParams.get('page') || '1', 10);
   const pageSize = Number.parseInt(searchParams.get('pageSize') || searchParams.get('limit') || '25', 10);
   const severity = searchParams.get('severity');
-  const result = await listAuditEventsPage({ page, pageSize, severity });
+  const search = searchParams.get('search');
+  const sort = searchParams.get('sort');
+  const direction = searchParams.get('direction');
+  const result = await listAuditEventsPage({ page, pageSize, severity, search, sort, direction });
 
   return noStoreJson({
     ok: true,

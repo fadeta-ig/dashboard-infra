@@ -108,6 +108,17 @@ export interface AuditListResult {
   summary: AuditListSummary;
 }
 
+type SortDirection = 'asc' | 'desc';
+
+function normalizeSearch(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized ? normalized.slice(0, 120) : null;
+}
+
+function normalizeSortDirection(value: string | null | undefined): SortDirection {
+  return value === 'asc' ? 'asc' : 'desc';
+}
+
 const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS monitoring_incidents (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -1344,15 +1355,49 @@ async function getIncidentSummary(): Promise<IncidentListSummary> {
   };
 }
 
+function incidentSortSql(sort: string | null | undefined, direction: string | null | undefined) {
+  const dir = normalizeSortDirection(direction).toUpperCase();
+  if (sort === 'title') return `title ${dir}`;
+  if (sort === 'domain') return `domain_key ${dir}`;
+  if (sort === 'status') return `status ${dir}`;
+  if (sort === 'severity') return `FIELD(severity, 'warning', 'critical') ${dir}`;
+  if (sort === 'duration') return `COALESCE(duration_seconds, TIMESTAMPDIFF(SECOND, started_at, UTC_TIMESTAMP())) ${dir}`;
+  if (sort === 'ack') return `acknowledged_at ${dir}`;
+  if (sort === 'resolvedAt') return `resolved_at ${dir}`;
+  return `started_at ${dir}`;
+}
+
 export async function listIncidentsPage(options: {
   page?: number;
   pageSize?: number;
   status?: string | null;
+  search?: string | null;
+  sort?: string | null;
+  direction?: string | null;
 } = {}): Promise<IncidentListResult> {
   await ensureMonitoringSchema();
   const statusFilter = normalizeStatusFilter(options.status);
-  const whereSql = statusFilter ? 'WHERE status = ?' : '';
-  const whereParams = statusFilter ? [statusFilter] : [];
+  const search = normalizeSearch(options.search);
+  const whereParts: string[] = [];
+  const whereParams: string[] = [];
+  if (statusFilter) {
+    whereParts.push('status = ?');
+    whereParams.push(statusFilter);
+  }
+  if (search) {
+    whereParts.push(`(
+      title LIKE ? OR
+      domain_key LIKE ? OR
+      incident_key LIKE ? OR
+      entity_key LIKE ? OR
+      entity_label LIKE ? OR
+      source LIKE ?
+    )`);
+    const likeValue = `%${search}%`;
+    whereParams.push(likeValue, likeValue, likeValue, likeValue, likeValue, likeValue);
+  }
+  const whereSql = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
+  const sortSql = incidentSortSql(options.sort, options.direction);
   const countRows = await queryRows<RowDataPacket & { total: number | string }>(
     `SELECT COUNT(*) AS total FROM monitoring_incidents ${whereSql}`,
     whereParams,
@@ -1383,7 +1428,7 @@ export async function listIncidentsPage(options: {
     `SELECT *
      FROM monitoring_incidents
      ${whereSql}
-     ORDER BY started_at DESC
+     ORDER BY ${sortSql}, id DESC
      LIMIT ${pagination.pageSize} OFFSET ${offset}`,
     whereParams,
   );
@@ -1561,15 +1606,46 @@ async function getAuditSummary(): Promise<AuditListSummary> {
   };
 }
 
+function auditSortSql(sort: string | null | undefined, direction: string | null | undefined) {
+  const dir = normalizeSortDirection(direction).toUpperCase();
+  if (sort === 'entity') return `entity_label ${dir}`;
+  if (sort === 'eventType') return `event_type ${dir}`;
+  if (sort === 'severity') return `FIELD(severity, 'info', 'warning', 'critical') ${dir}`;
+  if (sort === 'source') return `source ${dir}`;
+  if (sort === 'message') return `message ${dir}`;
+  return `event_at ${dir}`;
+}
+
 export async function listAuditEventsPage(options: {
   page?: number;
   pageSize?: number;
   severity?: string | null;
+  search?: string | null;
+  sort?: string | null;
+  direction?: string | null;
 } = {}): Promise<AuditListResult> {
   await ensureMonitoringSchema();
   const severityFilter = normalizeAuditSeverityFilter(options.severity);
-  const whereSql = severityFilter ? 'WHERE severity = ?' : '';
-  const whereParams = severityFilter ? [severityFilter] : [];
+  const search = normalizeSearch(options.search);
+  const whereParts: string[] = [];
+  const whereParams: string[] = [];
+  if (severityFilter) {
+    whereParts.push('severity = ?');
+    whereParams.push(severityFilter);
+  }
+  if (search) {
+    whereParts.push(`(
+      event_type LIKE ? OR
+      source LIKE ? OR
+      entity_key LIKE ? OR
+      entity_label LIKE ? OR
+      message LIKE ?
+    )`);
+    const likeValue = `%${search}%`;
+    whereParams.push(likeValue, likeValue, likeValue, likeValue, likeValue);
+  }
+  const whereSql = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
+  const sortSql = auditSortSql(options.sort, options.direction);
   const countRows = await queryRows<RowDataPacket & { total: number | string }>(
     `SELECT COUNT(*) AS total FROM monitoring_audit_events ${whereSql}`,
     whereParams,
@@ -1591,7 +1667,7 @@ export async function listAuditEventsPage(options: {
     `SELECT *
      FROM monitoring_audit_events
      ${whereSql}
-     ORDER BY event_at DESC
+     ORDER BY ${sortSql}, id DESC
      LIMIT ${pagination.pageSize} OFFSET ${offset}`,
     whereParams,
   );

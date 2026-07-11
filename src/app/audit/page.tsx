@@ -1,12 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ClipboardList, RefreshCcw, ShieldCheck } from 'lucide-react';
+import { ClipboardList, RefreshCcw, Search, ShieldCheck } from 'lucide-react';
 import { format } from 'date-fns';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';
 import { PaginationControls } from '@/components/dashboard/pagination-controls';
+import { SortHeaderButton } from '@/components/dashboard/sort-header-button';
 import { getErrorMessage } from '@/lib/metrics';
-import { DEFAULT_PAGE_SIZE, type PaginationMeta } from '@/lib/pagination';
+import { type PaginationMeta } from '@/lib/pagination';
+import { useStoredPageSize } from '@/lib/use-stored-page-size';
 
 interface AuditEventRecord {
   id: number;
@@ -35,6 +37,9 @@ interface AuditResponse {
   };
 }
 
+type AuditSort = 'eventAt' | 'entity' | 'eventType' | 'severity' | 'source' | 'message';
+type SortDirection = 'asc' | 'desc';
+
 function severityToIndicator(severity: AuditEventRecord['severity']) {
   if (severity === 'critical') return 'critical';
   if (severity === 'warning') return 'warning';
@@ -46,16 +51,22 @@ export default function AuditPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [severityFilter, setSeverityFilter] = useState<'all' | 'info' | 'warning' | 'critical'>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState<AuditSort>('eventAt');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [pageSize, setPageSize] = useStoredPageSize('audit');
 
   const fetchData = useCallback(async () => {
     try {
       const params = new URLSearchParams({
         page: String(page),
         pageSize: String(pageSize),
+        sort: sortBy,
+        direction: sortDirection,
       });
       if (severityFilter !== 'all') params.set('severity', severityFilter);
+      if (searchTerm.trim()) params.set('search', searchTerm.trim());
       const response = await fetch(`/api/ops/history/audit?${params.toString()}`, { cache: 'no-store' });
       if (!response.ok) throw new Error('Failed to fetch audit log');
       const json = (await response.json()) as AuditResponse;
@@ -67,7 +78,17 @@ export default function AuditPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, severityFilter]);
+  }, [page, pageSize, searchTerm, severityFilter, sortBy, sortDirection]);
+
+  const handleSort = (sortKey: AuditSort) => {
+    if (sortKey === sortBy) {
+      setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(sortKey);
+      setSortDirection(sortKey === 'eventAt' ? 'desc' : 'asc');
+    }
+    setPage(1);
+  };
 
   useEffect(() => {
     const initial = window.setTimeout(() => void fetchData(), 0);
@@ -178,6 +199,37 @@ export default function AuditPage() {
             </div>
           </div>
         </div>
+        <div className="grid gap-3 border-b border-border bg-white/40 px-5 py-4 lg:grid-cols-[minmax(260px,1fr)_220px]">
+          <label className="relative block">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={searchTerm}
+              onChange={(event) => {
+                setSearchTerm(event.target.value);
+                setPage(1);
+              }}
+              placeholder="Cari event, entity, source, atau pesan audit..."
+              className="w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground hover:bg-muted/40 focus:border-slate-400"
+            />
+          </label>
+          <select
+            value={`${sortBy}:${sortDirection}`}
+            onChange={(event) => {
+              const [nextSort, nextDirection] = event.target.value.split(':') as [AuditSort, SortDirection];
+              setSortBy(nextSort);
+              setSortDirection(nextDirection);
+              setPage(1);
+            }}
+            className="rounded-md border border-border bg-card px-3 py-2 text-sm outline-none transition-colors hover:bg-muted/40 focus:border-slate-400"
+            aria-label="Urutkan audit"
+          >
+            <option value="eventAt:desc">Event terbaru</option>
+            <option value="eventAt:asc">Event terlama</option>
+            <option value="severity:desc">Severity tertinggi</option>
+            <option value="entity:asc">Entity A-Z</option>
+            <option value="eventType:asc">Event type A-Z</option>
+          </select>
+        </div>
 
         <div className="grid gap-3 p-4 md:hidden">
           {events.map((event) => (
@@ -211,12 +263,24 @@ export default function AuditPage() {
           <table className="w-full text-sm text-left">
             <thead className="bg-muted/50 text-muted-foreground text-xs uppercase border-b border-border">
               <tr>
-                <th className="px-5 py-4 font-medium">Entity</th>
-                <th className="px-5 py-4 font-medium">Event Type</th>
-                <th className="px-5 py-4 font-medium">Severity</th>
-                <th className="px-5 py-4 font-medium">Source</th>
-                <th className="px-5 py-4 font-medium">Message</th>
-                <th className="px-5 py-4 font-medium">Event At</th>
+                <th className="px-5 py-4 font-medium">
+                  <SortHeaderButton label="Entity" sortKey="entity" activeSort={sortBy} direction={sortDirection} onSort={handleSort} />
+                </th>
+                <th className="px-5 py-4 font-medium">
+                  <SortHeaderButton label="Event Type" sortKey="eventType" activeSort={sortBy} direction={sortDirection} onSort={handleSort} />
+                </th>
+                <th className="px-5 py-4 font-medium">
+                  <SortHeaderButton label="Severity" sortKey="severity" activeSort={sortBy} direction={sortDirection} onSort={handleSort} />
+                </th>
+                <th className="px-5 py-4 font-medium">
+                  <SortHeaderButton label="Source" sortKey="source" activeSort={sortBy} direction={sortDirection} onSort={handleSort} />
+                </th>
+                <th className="px-5 py-4 font-medium">
+                  <SortHeaderButton label="Message" sortKey="message" activeSort={sortBy} direction={sortDirection} onSort={handleSort} />
+                </th>
+                <th className="px-5 py-4 font-medium">
+                  <SortHeaderButton label="Event At" sortKey="eventAt" activeSort={sortBy} direction={sortDirection} onSort={handleSort} />
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

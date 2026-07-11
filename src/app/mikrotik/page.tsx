@@ -20,7 +20,8 @@ import { StatusIndicator } from '@/components/dashboard/status-indicator';
 import { PaginationControls } from '@/components/dashboard/pagination-controls';
 import type { MikrotikDiscoveryResponse } from '@/lib/types';
 import { getErrorMessage } from '@/lib/metrics';
-import { DEFAULT_PAGE_SIZE, paginateItems } from '@/lib/pagination';
+import { paginateItems } from '@/lib/pagination';
+import { useStoredPageSize } from '@/lib/use-stored-page-size';
 import { cn } from '@/lib/utils';
 
 interface InterfaceTraffic {
@@ -161,10 +162,12 @@ export default function MikrotikPage() {
   const [loadingOverview, setLoadingOverview] = useState(true);
   const [loadingDiscovery, setLoadingDiscovery] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [interfaceSearch, setInterfaceSearch] = useState('');
+  const [discoverySearch, setDiscoverySearch] = useState('');
   const [interfacePage, setInterfacePage] = useState(1);
-  const [interfacePageSize, setInterfacePageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [interfacePageSize, setInterfacePageSize] = useStoredPageSize('mikrotik-interfaces');
   const [discoveryPage, setDiscoveryPage] = useState(1);
-  const [discoveryPageSize, setDiscoveryPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [discoveryPageSize, setDiscoveryPageSize] = useStoredPageSize('mikrotik-discovery');
 
   const fetchOverview = useCallback(async () => {
     try {
@@ -194,14 +197,41 @@ export default function MikrotikPage() {
     };
   }, [fetchOverview]);
 
+  const filteredInterfaces = useMemo(() => {
+    const query = interfaceSearch.trim().toLowerCase();
+    const interfaces = overview?.interfaces || [];
+    if (!query) return interfaces;
+    return interfaces.filter((item) => (
+      item.name.toLowerCase().includes(query) ||
+      item.displayName.toLowerCase().includes(query) ||
+      (item.comment || '').toLowerCase().includes(query) ||
+      (item.isp || '').toLowerCase().includes(query) ||
+      item.role.toLowerCase().includes(query) ||
+      item.instance.toLowerCase().includes(query) ||
+      item.operationalStatus.toLowerCase().includes(query)
+    ));
+  }, [interfaceSearch, overview?.interfaces]);
+
+  const filteredDiscoveryMetrics = useMemo(() => {
+    const query = discoverySearch.trim().toLowerCase();
+    const metrics = data?.metrics || [];
+    if (!query) return metrics;
+    return metrics.filter((metric) => (
+      metric.name.toLowerCase().includes(query) ||
+      metric.jobs.join(' ').toLowerCase().includes(query) ||
+      metric.instances.join(' ').toLowerCase().includes(query) ||
+      labelPreview(metric.sampleLabels).toLowerCase().includes(query)
+    ));
+  }, [data?.metrics, discoverySearch]);
+
   const pagedInterfaces = useMemo(
-    () => paginateItems(overview?.interfaces || [], interfacePage, interfacePageSize),
-    [overview?.interfaces, interfacePage, interfacePageSize],
+    () => paginateItems(filteredInterfaces, interfacePage, interfacePageSize),
+    [filteredInterfaces, interfacePage, interfacePageSize],
   );
 
   const pagedDiscoveryMetrics = useMemo(
-    () => paginateItems(data?.metrics || [], discoveryPage, discoveryPageSize),
-    [data?.metrics, discoveryPage, discoveryPageSize],
+    () => paginateItems(filteredDiscoveryMetrics, discoveryPage, discoveryPageSize),
+    [filteredDiscoveryMetrics, discoveryPage, discoveryPageSize],
   );
 
   const handleDiscovery = async () => {
@@ -368,9 +398,23 @@ export default function MikrotikPage() {
                 {overview?.configuredInterfaceCount || 0} interface terkonfigurasi / {overview?.liveInterfaceMetricCount || 0} interface dengan metric aktif.
               </p>
             </div>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 lg:min-w-[220px] lg:text-right">
-              <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400">Metric Belum Lengkap</p>
-              <p className="mt-1 text-sm text-slate-700">{(overview?.missingRequiredMetrics || []).join(', ') || 'Tidak ada'}</p>
+            <div className="flex flex-col gap-3 lg:min-w-[420px]">
+              <label className="relative block">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  value={interfaceSearch}
+                  onChange={(event) => {
+                    setInterfaceSearch(event.target.value);
+                    setInterfacePage(1);
+                  }}
+                  placeholder="Cari interface, role, ISP, UP/DOWN..."
+                  className="w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground hover:bg-muted/40 focus:border-slate-400"
+                />
+              </label>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 lg:text-right">
+                <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400">Metric Belum Lengkap</p>
+                <p className="mt-1 text-sm text-slate-700">{(overview?.missingRequiredMetrics || []).join(', ') || 'Tidak ada'}</p>
+              </div>
             </div>
           </div>
 
@@ -495,10 +539,26 @@ export default function MikrotikPage() {
       {data && (
         <section className="panel-surface overflow-hidden rounded-lg">
           <div className="border-b border-slate-100 bg-slate-50/70 px-6 py-4">
-            <h2 className="text-base font-semibold text-slate-900">Hasil Discovery</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {data.message} Total series: {data.totalSeries}. Diperiksa terakhir: {formatUpdatedTime(data.timestamp)}.
-            </p>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Hasil Discovery</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {data.message} Total series: {data.totalSeries}. Diperiksa terakhir: {formatUpdatedTime(data.timestamp)}.
+                </p>
+              </div>
+              <label className="relative block lg:w-96">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  value={discoverySearch}
+                  onChange={(event) => {
+                    setDiscoverySearch(event.target.value);
+                    setDiscoveryPage(1);
+                  }}
+                  placeholder="Cari metric, job, instance, label..."
+                  className="w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground hover:bg-muted/40 focus:border-slate-400"
+                />
+              </label>
+            </div>
           </div>
           <div className="grid gap-3 p-4 md:hidden">
             {pagedDiscoveryMetrics.items.map((metric) => (

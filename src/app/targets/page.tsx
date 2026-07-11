@@ -1,13 +1,14 @@
 ﻿'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, RefreshCcw } from 'lucide-react';
+import { Activity, RefreshCcw, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';
 import { PaginationControls } from '@/components/dashboard/pagination-controls';
 import type { TargetHealth } from '@/lib/types';
 import { getErrorMessage } from '@/lib/metrics';
-import { DEFAULT_PAGE_SIZE, paginateItems } from '@/lib/pagination';
+import { paginateItems } from '@/lib/pagination';
+import { useStoredPageSize } from '@/lib/use-stored-page-size';
 
 interface TargetsResponse {
   targets: TargetHealth[];
@@ -18,8 +19,9 @@ export default function TargetsPage() {
   const [data, setData] = useState<TargetsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [pageSize, setPageSize] = useStoredPageSize('targets');
 
   const fetchData = useCallback(async () => {
     try {
@@ -49,9 +51,21 @@ export default function TargetsPage() {
     };
   }, [fetchData]);
 
+  const filteredTargets = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    const targets = data?.targets || [];
+    if (!query) return targets;
+    return targets.filter((target) => (
+      target.job.toLowerCase().includes(query) ||
+      target.instance.toLowerCase().includes(query) ||
+      String(target.value).includes(query) ||
+      (target.up ? 'up' : 'down').includes(query)
+    ));
+  }, [data?.targets, searchTerm]);
+
   const pagedTargets = useMemo(
-    () => paginateItems(data?.targets || [], page, pageSize),
-    [data?.targets, page, pageSize],
+    () => paginateItems(filteredTargets, page, pageSize),
+    [filteredTargets, page, pageSize],
   );
 
   if (loading) {
@@ -103,6 +117,20 @@ export default function TargetsPage() {
       </div>
 
       <div className="panel-surface rounded-lg overflow-hidden">
+        <div className="border-b border-border bg-white/60 px-5 py-4">
+          <label className="relative block max-w-xl">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={searchTerm}
+              onChange={(event) => {
+                setSearchTerm(event.target.value);
+                setPage(1);
+              }}
+              placeholder="Cari job, instance, UP/DOWN, atau value..."
+              className="w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground hover:bg-muted/40 focus:border-slate-400"
+            />
+          </label>
+        </div>
         <div className="grid gap-3 p-4 md:hidden">
           {pagedTargets.items.map((targetItem) => (
             <div key={`${targetItem.job}-${targetItem.instance}`} className="rounded-lg border border-border bg-card p-4 space-y-3">

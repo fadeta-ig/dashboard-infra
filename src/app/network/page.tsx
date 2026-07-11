@@ -1,14 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useState, useMemo } from 'react';
-import { Activity, Camera, Fingerprint, Globe, Phone, RouterIcon, Server, type LucideIcon } from 'lucide-react';
+import { Activity, Camera, Fingerprint, Globe, Phone, RouterIcon, Search, Server, type LucideIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';
 import { PaginationControls } from '@/components/dashboard/pagination-controls';
 import type { NetworkMetrics, NetworkRangePoint, NetworkTarget } from '@/lib/types';
 import { getErrorMessage } from '@/lib/metrics';
-import { DEFAULT_PAGE_SIZE, paginateItems } from '@/lib/pagination';
+import { paginateItems } from '@/lib/pagination';
+import { useStoredPageSize } from '@/lib/use-stored-page-size';
 import { cn } from '@/lib/utils';
 
 type NetworkRangeResponse = { range: string; points: NetworkRangePoint[] };
@@ -72,8 +73,9 @@ export default function NetworkPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hiddenTargets, setHiddenTargets] = useState<Set<string>>(new Set());
+  const [targetSearch, setTargetSearch] = useState('');
   const [targetPage, setTargetPage] = useState(1);
-  const [targetPageSize, setTargetPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [targetPageSize, setTargetPageSize] = useStoredPageSize('network-targets');
 
   const fetchData = useCallback(async () => {
     try {
@@ -126,9 +128,22 @@ export default function NetworkPage() {
     return all;
   }, [data]);
 
+  const filteredAdditionalTargets = useMemo(() => {
+    const query = targetSearch.trim().toLowerCase();
+    const targets = data?.additionalTargets || [];
+    if (!query) return targets;
+    return targets.filter((target) => (
+      (target.label || '').toLowerCase().includes(query) ||
+      target.target.toLowerCase().includes(query) ||
+      (target.category || '').toLowerCase().includes(query) ||
+      (target.purpose || '').toLowerCase().includes(query) ||
+      (target.up === null ? 'unknown' : target.up ? 'up' : 'down').includes(query)
+    ));
+  }, [data?.additionalTargets, targetSearch]);
+
   const pagedAdditionalTargets = useMemo(
-    () => paginateItems(data?.additionalTargets || [], targetPage, targetPageSize),
-    [data?.additionalTargets, targetPage, targetPageSize],
+    () => paginateItems(filteredAdditionalTargets, targetPage, targetPageSize),
+    [filteredAdditionalTargets, targetPage, targetPageSize],
   );
 
   const toggleTarget = (id: string) => {
@@ -285,7 +300,21 @@ export default function NetworkPage() {
 
       <section className="panel-surface rounded overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/50">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-900">Additional Ping Targets</h2>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-900">Additional Ping Targets</h2>
+            <label className="relative block lg:w-96">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={targetSearch}
+                onChange={(event) => {
+                  setTargetSearch(event.target.value);
+                  setTargetPage(1);
+                }}
+                placeholder="Cari IP, label, kategori, UP/DOWN..."
+                className="w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground hover:bg-muted/40 focus:border-slate-400"
+              />
+            </label>
+          </div>
         </div>
         <div className="grid gap-3 p-4 md:hidden">
           {pagedAdditionalTargets.items.map((target) => {
