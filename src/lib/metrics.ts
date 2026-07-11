@@ -31,7 +31,7 @@ const NET_DEVICE_EXCLUDE = 'lo|docker.*|veth.*|br-.*|virbr.*';
  * Filesystem types considered virtual/pseudo — excluded from mountpoint table.
  * iso9660 (CD-ROM) and efivarfs also excluded since they are not data filesystems.
  */
-const VIRTUAL_FSTYPES = 'tmpfs|devtmpfs|squashfs|overlay|efivarfs|iso9660|autofs|ramfs|fuse\\..*';
+const VIRTUAL_FSTYPES = 'tmpfs|devtmpfs|squashfs|overlay|efivarfs|iso9660|autofs|ramfs|fuse[.].*';
 
 export const PROMQL = {
   // ─── Core ───────────────────────────────────────────────────────────────
