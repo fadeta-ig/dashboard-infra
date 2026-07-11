@@ -227,10 +227,13 @@ Semua endpoint dilindungi session auth melalui `src/proxy.ts`, memakai rate limi
 - `GET /api/metrics/mikrotik/discovery`
 - `GET /api/metrics/mikrotik/overview`
 - `GET /api/ops/analytics/overview?days=14`
+- `GET /api/ops/config`
 - `GET /api/ops/history/incidents?limit=200`
 - `GET /api/ops/history/audit?limit=200`
+- `GET /api/ops/noc`
 - `GET /api/ops/reports/monthly?month=YYYY-MM`
 - `GET /api/ops/reports/monthly/pdf?month=YYYY-MM`
+- `POST /api/ops/config`
 - `POST /api/ops/history/collect`
 - `POST /api/ops/history/incidents/ack`
 - `POST /api/ops/storage/init`
@@ -257,9 +260,12 @@ Tabel yang dibuat oleh inisialisasi storage:
 - `health_scores`
 - `capacity_daily`
 - `monitoring_alert_deliveries`
+- `monitoring_config_items`
 
 Halaman UI yang sudah tersedia:
 
+- `/noc` untuk view operator NOC: SLA kategori, incident open, dan maintenance aktif.
+- `/settings` untuk kelola target ICMP, interface MikroTik, service Ubuntu, SLA policy, dan maintenance window dari database.
 - `/analytics` untuk health score dan capacity planning harian.
 - `/reports` untuk report bulanan dan download PDF.
 - `/incidents` untuk histori incident target down/up.
@@ -275,6 +281,13 @@ P0 hardening yang sudah aktif:
 - Cooldown alert dikendalikan oleh `ALERT_COOLDOWN_MS` default 900000 ms.
 - Waktu alert diformat memakai `ALERT_TIME_ZONE` atau `APP_TIME_ZONE`; default `Asia/Jakarta`.
 - Domain latency yang dikenal flapping, default `fingerprint,cctv`, memakai toleransi khusus: flapping singkat tidak dibuat incident, warning tidak mengirim notif, dan critical baru dikirim setelah `THRESHOLD_NETWORK_LATENCY_TOLERANT_CRITICAL_AFTER_MS`.
+
+P1/P2 konfigurasi operasional:
+
+- Target ICMP, interface MikroTik, dan service Ubuntu sekarang bisa dikelola dari `/settings`; nilai awal disalin dari konfigurasi statis saat tabel config pertama kali dibuat.
+- SLA policy per kategori berada di tipe config `sla_policy` dengan field `targetAvailabilityPercent`, `responseMinutes`, dan `resolutionMinutes`.
+- Maintenance window berada di tipe config `maintenance_window`; scope `all`, `domain`, atau `entity` akan menekan pengiriman alert selama window aktif, tetapi lifecycle incident tetap tercatat.
+- `/noc` memakai config aktif dari database dan auto-refresh untuk kebutuhan operator.
 
 Payload webhook alert berbentuk JSON dan menyertakan `eventType`, `generatedAt`, serta detail incident. Jika `ALERT_WEBHOOK_TOKEN` diisi, dashboard mengirim header `Authorization: Bearer <token>`.
 
@@ -348,6 +361,23 @@ node scripts/init-monitoring-storage.mjs
 
 Jika berhasil, script akan membuat database dan tabel yang dibutuhkan. Pada server production, sangat disarankan memakai user aplikasi seperti `infra_app`, bukan `root`.
 
+## Backup dan Retention MySQL
+
+Backup manual:
+
+```bash
+npm run backup:mysql
+```
+
+Environment opsional:
+
+```bash
+MYSQL_BACKUP_DIR=/var/backups/dashboard-infra/mysql
+MYSQL_BACKUP_RETENTION_DAYS=14
+```
+
+Script memakai `mysqldump --single-transaction --routines --triggers`, menulis file `.sql`, dan menghapus backup lama sesuai retention. Jalankan lewat cron/systemd timer di server production.
+
 ## Worker Collector Periodik
 
 Collector periodik berjalan terpisah dari web app dan akan menulis history ke MySQL pada interval tertentu.
@@ -411,11 +441,14 @@ npm run deploy
 
 Script deploy sekarang akan:
 
+- menjalankan preflight `.env` dengan `npm run deploy:check`
 - `git pull`
 - `npm install`
 - `npm run build`
 - inisialisasi storage schema
 - `pm2 startOrReload ecosystem.config.cjs --update-env`
+
+Preflight deploy akan gagal jika environment wajib belum lengkap, password dashboard masih default/lemah, `DASHBOARD_SESSION_SECRET` terlalu pendek, atau `OPS_INTERNAL_TOKEN` terlalu pendek. Ini disengaja agar production tidak berjalan dengan konfigurasi lemah.
 
 Jika `git pull` gagal karena local changes di server, cek dulu file yang berubah dengan:
 

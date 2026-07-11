@@ -7,6 +7,7 @@ import { prometheusInstantQuery, prometheusRangeQuery } from '@/lib/prometheus';
 import { getReadinessSnapshot } from '@/lib/readiness';
 import { getServiceHealthSnapshot } from '@/lib/service-health';
 import { getMonitoringThresholds, thresholdStatus } from '@/lib/thresholds';
+import { getActiveMaintenanceWindows, getNetworkPingTargetConfigs, maintenanceWindowMatches } from '@/lib/config-store';
 import { paginationMeta, paginationOffset, type PaginationMeta } from '@/lib/pagination';
 import { mysqlDateTimeToIsoString as toIsoString, toMysqlDateTime, utcDateKey as toDateKey } from '@/lib/time';
 
@@ -498,6 +499,7 @@ async function collectCurrentState() {
     mikrotikTemperature,
     serviceSnapshot,
     readinessSnapshot,
+    pingTargets,
   ] = await Promise.all([
     prometheusInstantQuery(PROMQL.up),
     prometheusInstantQuery(PROMQL.pingSuccess),
@@ -524,12 +526,13 @@ async function collectCurrentState() {
     getMikrotikTemperatureSnapshot(),
     getServiceHealthSnapshot(),
     getReadinessSnapshot(),
+    getNetworkPingTargetConfigs(),
   ]);
 
   return {
     timestamp: nowIso(),
     targets: buildTargets(targetsData, nowIso()),
-    network: buildNetworkMetrics(pingStatusData, pingLatencyData, nowIso()),
+    network: buildNetworkMetrics(pingStatusData, pingLatencyData, nowIso(), pingTargets),
     mikrotikTemperature,
     server: buildServerMetrics(
       cpuData,
@@ -1074,9 +1077,19 @@ async function processIncidentCandidate(
   rawCandidate: IncidentCandidate,
   openIncidents: Awaited<ReturnType<typeof getOpenIncidentMap>>,
   timestamp: string,
+  maintenanceWindows: Awaited<ReturnType<typeof getActiveMaintenanceWindows>> = [],
 ) {
   const candidate = await applyLatencyTolerance(rawCandidate, timestamp);
   const openIncident = openIncidents.get(candidate.incidentKey);
+  const inMaintenance = maintenanceWindows.some((window) => maintenanceWindowMatches(window, candidate));
+  if (inMaintenance) {
+    candidate.metadata = {
+      ...candidate.metadata,
+      maintenanceSuppressed: true,
+    };
+    candidate.notifyOnOpen = false;
+    candidate.notifyOnResolved = false;
+  }
 
   if (candidate.active === true && !openIncident) {
     const inserted = await insertIncident({
@@ -1144,6 +1157,7 @@ export async function runHistoryCollection() {
   await ensureMonitoringSchema();
   const snapshot = await collectCurrentState();
   const openIncidents = await getOpenIncidentMap();
+  const maintenanceWindows = await getActiveMaintenanceWindows(snapshot.timestamp);
   let openedCount = 0;
   let resolvedCount = 0;
   let auditCount = 0;
@@ -1154,7 +1168,7 @@ export async function runHistoryCollection() {
   ];
 
   for (const candidate of incidentCandidates) {
-    const result = await processIncidentCandidate(candidate, openIncidents, snapshot.timestamp);
+    const result = await processIncidentCandidate(candidate, openIncidents, snapshot.timestamp, maintenanceWindows);
     openedCount += result.opened;
     resolvedCount += result.resolved;
   }

@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "deploy": "git pull && npm install && npm run build && node scripts/init-monitoring-storage.mjs && pm2 startOrReload ecosystem.config.cjs --update-env",
+    "test:ci": "npm run lint && npm run build",
+    "backup:mysql": "node scripts/backup-mysql.mjs",
+    "deploy:check": "node scripts/deploy-check.mjs",
+    "deploy": "npm run deploy:check && git pull && npm install && npm run build && node scripts/init-monitoring-storage.mjs && pm2 startOrReload ecosystem.config.cjs --update-env",
     "history:collect": "node scripts/init-monitoring-storage.mjs && node scripts/history-collector.mjs"
   },
   "dependencies": {

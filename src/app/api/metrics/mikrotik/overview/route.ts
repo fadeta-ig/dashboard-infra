@@ -1,7 +1,8 @@
 ﻿import { type NextRequest } from 'next/server';
 import { prometheusInstantQuery } from '@/lib/prometheus';
 import { metricMatchesTarget, NETWORK_TARGETS, nowIso, roundMetric, valueAt } from '@/lib/metrics';
-import { MIKROTIK_INTERFACES, type InterfaceRole } from '@/lib/monitoring-config';
+import { getMikrotikInterfaceConfigs } from '@/lib/config-store';
+import type { InterfaceRole, MikrotikInterfaceConfig } from '@/lib/monitoring-config';
 import { getMikrotikTemperatureSnapshot } from '@/lib/mikrotik-temperature';
 import { enforceMetricsRateLimit, noStoreJson } from '@/lib/rate-limit';
 import type { PrometheusData, PrometheusVectorResult } from '@/lib/types';
@@ -66,13 +67,14 @@ function metricAvailable(data: PrometheusData | null) {
 }
 
 function buildConfiguredInterfaces(
+  interfaceConfigs: MikrotikInterfaceConfig[],
   downloadData: PrometheusData | null,
   uploadData: PrometheusData | null,
   operStatusData: PrometheusData | null,
   errorsData: PrometheusData | null,
   discardsData: PrometheusData | null,
 ): InterfaceTraffic[] {
-  return MIKROTIK_INTERFACES.map((config) => {
+  return interfaceConfigs.map((config) => {
     const downloadResult = findResultByInterface(downloadData, config.name);
     const uploadResult = findResultByInterface(uploadData, config.name);
     const operStatusResult = findResultByInterface(operStatusData, config.name);
@@ -115,7 +117,7 @@ export async function GET(request: NextRequest) {
   const limited = enforceMetricsRateLimit(request);
   if (limited) return limited;
 
-  const [downloadData, uploadData, operStatusData, errorsData, discardsData, uptimeData, pingData, jitterData, lossData, temperature] = await Promise.all([
+  const [downloadData, uploadData, operStatusData, errorsData, discardsData, uptimeData, pingData, jitterData, lossData, temperature, interfaceConfigs] = await Promise.all([
     prometheusInstantQuery(`rate(ifHCInOctets{${SNMP_INTERFACE_SELECTOR}}[5m]) * 8 / 1000000`),
     prometheusInstantQuery(`rate(ifHCOutOctets{${SNMP_INTERFACE_SELECTOR}}[5m]) * 8 / 1000000`),
     prometheusInstantQuery(`ifOperStatus{${SNMP_INTERFACE_SELECTOR}}`),
@@ -126,9 +128,10 @@ export async function GET(request: NextRequest) {
     prometheusInstantQuery('stddev_over_time(probe_duration_seconds{job="blackbox_icmp"}[5m]) * 1000'),
     prometheusInstantQuery('(1 - avg_over_time(probe_success{job="blackbox_icmp"}[5m])) * 100'),
     getMikrotikTemperatureSnapshot(),
+    getMikrotikInterfaceConfigs(),
   ]);
 
-  const interfaces = buildConfiguredInterfaces(downloadData, uploadData, operStatusData, errorsData, discardsData);
+  const interfaces = buildConfiguredInterfaces(interfaceConfigs, downloadData, uploadData, operStatusData, errorsData, discardsData);
   const wanInterfaces = interfaces.filter((item) => item.role === 'wan' && item.includeInWanTotal);
   const liveInterfaces = interfaces.filter((item) => item.metricAvailable);
   const totalDownloadMbps = roundMetric(

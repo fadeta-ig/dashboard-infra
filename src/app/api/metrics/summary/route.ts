@@ -9,6 +9,7 @@ import {
   PROMQL,
   nowIso,
 } from '@/lib/metrics';
+import { getNetworkPingTargetConfigs } from '@/lib/config-store';
 import { enforceMetricsRateLimit, noStoreJson } from '@/lib/rate-limit';
 import type { SummaryResponse } from '@/lib/types';
 
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
   if (limited) return limited;
 
   const timestamp = nowIso();
-  const [cpuData, ramUsageData, ramAvailData, diskData, loadData, targetsData, pingStatusData, pingLatencyData, hwmonTemperatureData, thermalZoneTemperatureData] = await Promise.all([
+  const [cpuData, ramUsageData, ramAvailData, diskData, loadData, targetsData, pingStatusData, pingLatencyData, hwmonTemperatureData, thermalZoneTemperatureData, pingTargets] = await Promise.all([
     prometheusInstantQuery(PROMQL.cpuUsage),
     prometheusInstantQuery(PROMQL.ramUsage),
     prometheusInstantQuery(PROMQL.ramAvailableGb),
@@ -30,6 +31,7 @@ export async function GET(request: NextRequest) {
     prometheusInstantQuery(PROMQL.pingLatency),
     prometheusInstantQuery(PROMQL.hwmonTemperature),
     prometheusInstantQuery(PROMQL.thermalZoneTemperature),
+    getNetworkPingTargetConfigs(),
   ]);
 
   const server = buildServerMetrics(
@@ -37,7 +39,7 @@ export async function GET(request: NextRequest) {
     null, null, null, null, null, null, null, null, null, null, null, null,
     hwmonTemperatureData, thermalZoneTemperatureData,
   );
-  const network = buildNetworkMetrics(pingStatusData, pingLatencyData, timestamp);
+  const network = buildNetworkMetrics(pingStatusData, pingLatencyData, timestamp, pingTargets);
   const targets = buildTargets(targetsData, timestamp);
   const queryHealth = combineQueryHealth(
     cpuData,

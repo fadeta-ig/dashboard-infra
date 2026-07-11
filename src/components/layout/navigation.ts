@@ -7,8 +7,10 @@ import {
   Network,
   RouterIcon,
   Server,
+  Settings2,
   ShieldAlert,
   Target,
+  Tv,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -29,6 +31,7 @@ export const navSections: NavSection[] = [
     title: 'Overview',
     items: [
       { name: 'Summary Dashboard', href: '/', icon: Activity, description: 'Ringkasan kondisi utama' },
+      { name: 'NOC Dashboard', href: '/noc', icon: Tv, description: 'View operator dan SLA kategori' },
       { name: 'Health & Capacity', href: '/analytics', icon: Gauge, description: 'Tren performa dan kapasitas' },
       { name: 'Monthly Report', href: '/reports', icon: FileText, description: 'Laporan bulanan dan PDF' },
     ],
@@ -47,6 +50,7 @@ export const navSections: NavSection[] = [
     items: [
       { name: 'Incident History', href: '/incidents', icon: ShieldAlert, description: 'Riwayat down/up dan insiden' },
       { name: 'Audit Log', href: '/audit', icon: ClipboardList, description: 'Audit operasional sistem' },
+      { name: 'Monitoring Settings', href: '/settings', icon: Settings2, description: 'Target, SLA, dan maintenance' },
       { name: 'Panduan Dashboard', href: '/panduan', icon: BookOpen, description: 'Panduan pembacaan dashboard' },
     ],
   },

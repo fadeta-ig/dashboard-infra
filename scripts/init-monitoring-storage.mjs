@@ -208,6 +208,20 @@ const schemaStatements = [
     KEY idx_monitoring_alert_deliveries_event (event_type),
     KEY idx_monitoring_alert_deliveries_created_at (created_at)
   )`,
+  `CREATE TABLE IF NOT EXISTS monitoring_config_items (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    item_type VARCHAR(64) NOT NULL,
+    item_key VARCHAR(191) NOT NULL,
+    label VARCHAR(191) NOT NULL,
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    sort_order INT NOT NULL DEFAULT 0,
+    payload_json JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_monitoring_config_items_type_key (item_type, item_key),
+    KEY idx_monitoring_config_items_type_enabled (item_type, enabled),
+    KEY idx_monitoring_config_items_sort (item_type, sort_order)
+  )`,
 ];
 
 const rootConnection = await mysql.createConnection({
@@ -227,7 +241,7 @@ try {
   await runMigrations();
 
   console.log(`Database '${database}' ready on ${host}:${port}.`);
-  console.log('Tables initialized: monitoring_incidents, monitoring_audit_events, monitoring_state_snapshots, report_snapshots, health_scores, capacity_daily, monitoring_alert_deliveries');
+  console.log('Tables initialized: monitoring_incidents, monitoring_audit_events, monitoring_state_snapshots, report_snapshots, health_scores, capacity_daily, monitoring_alert_deliveries, monitoring_config_items');
 } finally {
   await rootConnection.end();
 }

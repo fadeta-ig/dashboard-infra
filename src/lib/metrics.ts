@@ -18,7 +18,7 @@ import type {
   TopProcess,
 } from '@/lib/types';
 import { getMonitoringThresholds } from '@/lib/thresholds';
-import { NETWORK_PING_TARGETS } from '@/lib/monitoring-config';
+import { NETWORK_PING_TARGETS, type NetworkPingTargetConfig } from '@/lib/monitoring-config';
 
 /**
  * Network interfaces to exclude from server RX/TX aggregation.
@@ -415,11 +415,12 @@ export function buildNetworkMetrics(
   pingStatusData: PrometheusData | null,
   pingLatencyData: PrometheusData | null,
   timestamp = nowIso(),
+  pingTargets: NetworkPingTargetConfig[] = NETWORK_PING_TARGETS,
 ): NetworkMetrics {
   const gateway = buildNetworkTarget(NETWORK_TARGETS.gateway, pingStatusData, pingLatencyData);
   const googleDns = buildNetworkTarget(NETWORK_TARGETS.googleDns, pingStatusData, pingLatencyData);
   const cloudflareDns = buildNetworkTarget(NETWORK_TARGETS.cloudflareDns, pingStatusData, pingLatencyData);
-  const additionalTargets = NETWORK_PING_TARGETS.map((target) => buildNetworkTarget(target.target, pingStatusData, pingLatencyData, {
+  const additionalTargets = pingTargets.map((target) => buildNetworkTarget(target.target, pingStatusData, pingLatencyData, {
     label: target.label,
     category: target.category,
     purpose: target.purpose,
@@ -521,7 +522,7 @@ export function alignServerRange(
   }));
 }
 
-export function alignNetworkRange(latencyData: PrometheusData | null): NetworkRangePoint[] {
+export function alignNetworkRange(latencyData: PrometheusData | null, pingTargets: NetworkPingTargetConfig[] = NETWORK_PING_TARGETS): NetworkRangePoint[] {
   if (!latencyData || latencyData.resultType !== 'matrix') return [];
 
   const targetValues = new Map<string, [number, string][]>();
@@ -535,7 +536,7 @@ export function alignNetworkRange(latencyData: PrometheusData | null): NetworkRa
     } else if (metricMatchesTarget(result, NETWORK_TARGETS.cloudflareDns)) {
       matchedTarget = NETWORK_TARGETS.cloudflareDns;
     } else {
-      const found = NETWORK_PING_TARGETS.find(t => metricMatchesTarget(result, t.target, t.label ? [t.label] : []));
+      const found = pingTargets.find(t => metricMatchesTarget(result, t.target, t.label ? [t.label] : []));
       if (found) matchedTarget = found.target;
     }
 

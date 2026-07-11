@@ -1,6 +1,7 @@
 import { prometheusInstantQuery } from '@/lib/prometheus';
 import { nowIso, valueAt } from '@/lib/metrics';
-import { UBUNTU_SERVICES } from '@/lib/monitoring-config';
+import { getUbuntuServiceConfigs } from '@/lib/config-store';
+import type { UbuntuServiceConfig } from '@/lib/monitoring-config';
 import type { PrometheusData, PrometheusVectorResult } from '@/lib/types';
 
 const SYSTEMD_STATES = 'active|failed|inactive|activating|deactivating';
@@ -53,8 +54,8 @@ function collectAvailableUnits(rows: PrometheusVectorResult[]) {
     .sort((left, right) => left.unit.localeCompare(right.unit));
 }
 
-function collectMatchedUnits(rows: PrometheusVectorResult[]) {
-  return UBUNTU_SERVICES.flatMap((service) => {
+function collectMatchedUnits(rows: PrometheusVectorResult[], serviceConfigs: UbuntuServiceConfig[]) {
+  return serviceConfigs.flatMap((service) => {
     const match = findCurrentServiceState(rows, service.matcher);
     if (!match) return [];
 
@@ -66,9 +67,10 @@ function collectMatchedUnits(rows: PrometheusVectorResult[]) {
 }
 
 export async function getServiceHealthSnapshot(): Promise<ServiceHealthSnapshot> {
-  const [collectorProbeData, serviceData] = await Promise.all([
+  const [collectorProbeData, serviceData, serviceConfigs] = await Promise.all([
     prometheusInstantQuery('node_systemd_unit_state'),
     prometheusInstantQuery(`node_systemd_unit_state{state=~"${SYSTEMD_STATES}"}`),
+    getUbuntuServiceConfigs(),
   ]);
 
   const collectorAvailable = Boolean(
@@ -76,9 +78,9 @@ export async function getServiceHealthSnapshot(): Promise<ServiceHealthSnapshot>
   );
   const currentRows = activeStateRows(serviceData);
   const availableUnits = collectAvailableUnits(currentRows);
-  const matchedUnits = collectMatchedUnits(currentRows);
+  const matchedUnits = collectMatchedUnits(currentRows, serviceConfigs);
 
-  const services = UBUNTU_SERVICES.map((service) => {
+  const services = serviceConfigs.map((service) => {
     const match = findCurrentServiceState(currentRows, service.matcher);
     const state = match?.metric.state || null;
 
