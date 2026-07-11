@@ -149,6 +149,30 @@ systemctl list-units --type=service --all | egrep 'nginx|apache|php|mysql|mariad
 curl -s 'http://127.0.0.1:9100/metrics' | grep 'node_systemd_unit_state' | egrep 'nginx|apache|php|mysql|mariadb|node|pm2|ssh|dashboard' | head -50
 ```
 
+## PM2 Process Health
+
+Halaman `/server` membaca `pm2 jlist` dari proses dashboard untuk menampilkan aplikasi PM2, status online, PID, CPU, memory, restart count, dan uptime.
+
+Default required app:
+
+```bash
+PM2_REQUIRED_APPS=dashboard-infra,dashboard-history-collector
+```
+
+Jika ada aplikasi lain yang wajib aktif, misalnya `ktia`, tambahkan di `.env`:
+
+```bash
+PM2_REQUIRED_APPS=dashboard-infra,dashboard-history-collector,ktia
+```
+
+Jika binary PM2 tidak ada di `PATH` proses Node, set path eksplisit:
+
+```bash
+PM2_BIN=/usr/bin/pm2
+```
+
+Collector membuat incident untuk required PM2 app yang tidak `online`, dan audit log `pm2_state_changed` saat status/PID/restart berubah.
+
 
 ## Target ICMP Tambahan
 
@@ -220,6 +244,7 @@ Semua endpoint dilindungi session auth melalui `src/proxy.ts`, memakai rate limi
 - `GET /api/metrics/server`
 - `GET /api/metrics/server/range?range=1h|6h|24h`
 - `GET /api/metrics/server/services`
+- `GET /api/metrics/server/pm2`
 - `GET /api/metrics/network`
 - `GET /api/metrics/network/range?range=1h|6h|24h`
 - `GET /api/metrics/targets`

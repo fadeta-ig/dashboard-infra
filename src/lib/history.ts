@@ -3,6 +3,7 @@ import { dispatchIncidentAlert, type AlertIncidentSnapshot } from '@/lib/alerts'
 import { executeStatement, getDatabaseUnavailableReason, getPool, isDatabaseConfigured, queryRows } from '@/lib/db';
 import { buildNetworkMetrics, buildServerMetrics, buildTargets, nowIso, PROMQL } from '@/lib/metrics';
 import { getMikrotikTemperatureRange, getMikrotikTemperatureSnapshot } from '@/lib/mikrotik-temperature';
+import { getPm2HealthSnapshot } from '@/lib/pm2-health';
 import { prometheusInstantQuery, prometheusRangeQuery } from '@/lib/prometheus';
 import { getReadinessSnapshot } from '@/lib/readiness';
 import { getServiceHealthSnapshot } from '@/lib/service-health';
@@ -472,6 +473,21 @@ function buildServiceStateMap(snapshot: Awaited<ReturnType<typeof getServiceHeal
   );
 }
 
+function buildPm2StateMap(snapshot: Awaited<ReturnType<typeof getPm2HealthSnapshot>>) {
+  return Object.fromEntries(
+    snapshot.processes.map((app) => [
+      app.name,
+      {
+        status: app.status,
+        active: app.active,
+        pid: app.pid,
+        restartCount: app.restartCount,
+        required: app.required,
+      },
+    ]),
+  );
+}
+
 async function collectCurrentState() {
   const [
     targetsData,
@@ -498,6 +514,7 @@ async function collectCurrentState() {
     thermalZoneTemperatureData,
     mikrotikTemperature,
     serviceSnapshot,
+    pm2Snapshot,
     readinessSnapshot,
     pingTargets,
   ] = await Promise.all([
@@ -525,6 +542,7 @@ async function collectCurrentState() {
     prometheusInstantQuery(PROMQL.thermalZoneTemperature),
     getMikrotikTemperatureSnapshot(),
     getServiceHealthSnapshot(),
+    getPm2HealthSnapshot(),
     getReadinessSnapshot(),
     getNetworkPingTargetConfigs(),
   ]);
@@ -556,6 +574,7 @@ async function collectCurrentState() {
       thermalZoneTemperatureData,
     ),
     services: serviceSnapshot,
+    pm2: pm2Snapshot,
     readiness: readinessSnapshot,
   };
 }
@@ -584,7 +603,8 @@ function buildHealthScores(snapshot: Awaited<ReturnType<typeof collectCurrentSta
     (snapshot.server.status === 'critical' ? 35 : snapshot.server.status === 'warning' ? 15 : 0) +
     (snapshot.server.rebootRequired ? 10 : 0) +
     snapshot.services.services.filter((service) => service.required && service.active === false).length * 20 +
-    snapshot.services.missingRequired.length * 10;
+    snapshot.services.missingRequired.length * 10 +
+    (snapshot.pm2.available ? snapshot.pm2.requiredDown.length * 20 : 10);
   scores.push({
     domainKey: 'server',
     score: clampScore(100 - serverPenalty),
@@ -592,6 +612,8 @@ function buildHealthScores(snapshot: Awaited<ReturnType<typeof collectCurrentSta
       status: snapshot.server.status,
       rebootRequired: snapshot.server.rebootRequired,
       missingRequiredServices: snapshot.services.missingRequired,
+      pm2Available: snapshot.pm2.available,
+      pm2RequiredDown: snapshot.pm2.requiredDown,
     },
   });
 
@@ -936,6 +958,50 @@ function targetIncidentCandidate(target: ReturnType<typeof buildTargets>[number]
   };
 }
 
+function buildPm2IncidentCandidates(snapshot: Awaited<ReturnType<typeof collectCurrentState>>): IncidentCandidate[] {
+  const collectorCandidate: IncidentCandidate = {
+    active: !snapshot.pm2.available,
+    source: 'pm2',
+    domainKey: 'server',
+    incidentKey: 'pm2:collector-unavailable',
+    title: 'PM2 process list tidak bisa dibaca',
+    severity: 'warning',
+    entityType: 'pm2',
+    entityKey: 'pm2:jlist',
+    entityLabel: 'PM2 process list',
+    metadata: {
+      error: snapshot.pm2.error,
+      requiredApps: snapshot.pm2.requiredApps,
+    },
+  };
+
+  if (!snapshot.pm2.available) return [collectorCandidate];
+
+  return [
+    collectorCandidate,
+    ...snapshot.pm2.processes
+      .filter((app) => app.required)
+      .map((app): IncidentCandidate => ({
+        active: !app.active,
+        source: 'pm2',
+        domainKey: 'server',
+        incidentKey: `pm2:${app.name}`,
+        title: `PM2 app ${app.name} tidak online`,
+        severity: 'critical' as const,
+        entityType: 'pm2_process',
+        entityKey: app.name,
+        entityLabel: app.name,
+        metadata: {
+          status: app.status,
+          pmId: app.pmId,
+          pid: app.pid,
+          restartCount: app.restartCount,
+          unstableRestartCount: app.unstableRestartCount,
+        },
+      })),
+  ];
+}
+
 function candidateToAlertSnapshot(
   candidate: IncidentCandidate,
   status: 'open' | 'resolved',
@@ -1165,6 +1231,7 @@ export async function runHistoryCollection() {
   const incidentCandidates = [
     ...snapshot.targets.map(targetIncidentCandidate),
     ...buildThresholdIncidentCandidates(snapshot),
+    ...buildPm2IncidentCandidates(snapshot),
   ];
 
   for (const candidate of incidentCandidates) {
@@ -1242,6 +1309,34 @@ export async function runHistoryCollection() {
     auditCount += 1;
   }
   await setStoredState('services:collector', currentCollectorState);
+
+  const previousPm2State = await getStoredState<Record<string, { status: string; active: boolean; pid: number | null; restartCount: number | null; required: boolean }>>('pm2:health');
+  const currentPm2State = buildPm2StateMap(snapshot.pm2);
+  if (previousPm2State) {
+    for (const [appName, current] of Object.entries(currentPm2State)) {
+      const previous = previousPm2State[appName];
+      if (!previous) continue;
+      if (
+        previous.status !== current.status ||
+        previous.active !== current.active ||
+        previous.pid !== current.pid ||
+        previous.restartCount !== current.restartCount
+      ) {
+        await insertAuditEvent({
+          eventType: 'pm2_state_changed',
+          source: 'pm2',
+          severity: current.required && !current.active ? 'critical' : 'info',
+          entityKey: `pm2:${appName}`,
+          entityLabel: appName,
+          message: `Status PM2 ${appName} berubah dari ${previous.status || 'unknown'} ke ${current.status || 'unknown'}.`,
+          payload: { previous, current },
+          eventAtIso: snapshot.timestamp,
+        });
+        auditCount += 1;
+      }
+    }
+  }
+  await setStoredState('pm2:health', currentPm2State);
 
   const previousReadinessState = await getStoredState<Record<string, { status: string; requiredReady: number; requiredTotal: number }>>('readiness:categories');
   const currentReadinessState = Object.fromEntries(

@@ -41,6 +41,32 @@ interface ServicesResponse {
   timestamp: string;
 }
 
+interface Pm2ProcessHealth {
+  name: string;
+  pmId: number | null;
+  pid: number | null;
+  status: string;
+  active: boolean;
+  required: boolean;
+  cpuPercent: number | null;
+  memoryBytes: number | null;
+  restartCount: number | null;
+  unstableRestartCount: number | null;
+  uptimeMs: number | null;
+  execMode: string | null;
+  instances: string | null;
+}
+
+interface Pm2HealthResponse {
+  available: boolean;
+  status: 'healthy' | 'warning' | 'critical' | 'unknown';
+  requiredApps: string[];
+  requiredDown: string[];
+  processes: Pm2ProcessHealth[];
+  error: string | null;
+  timestamp: string;
+}
+
 function serviceStatus(service: ServiceHealth): 'healthy' | 'critical' | 'unknown' {
   if (!service.metricAvailable || service.active === null) return 'unknown';
   return service.active ? 'healthy' : 'critical';
@@ -66,6 +92,28 @@ function collectorStatus(services: ServicesResponse | null): 'healthy' | 'warnin
   return 'healthy';
 }
 
+function pm2Text(pm2: Pm2HealthResponse | null) {
+  if (!pm2) return 'Checking';
+  if (!pm2.available) return 'PM2 unavailable';
+  if (pm2.requiredDown.length > 0) return `${pm2.requiredDown.length} required down`;
+  return 'PM2 ready';
+}
+
+function formatMemory(bytes: number | null) {
+  if (bytes === null) return '-';
+  return `${Math.round((bytes / 1024 / 1024) * 10) / 10} MB`;
+}
+
+function formatUptime(ms: number | null) {
+  if (ms === null) return '-';
+  const minutes = Math.floor(ms / 60000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours}h ${minutes % 60}m`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ${hours % 24}h`;
+}
+
 const SNAPSHOT_INTERVAL_MS = 30_000;
 const DETAIL_INTERVAL_MS = 60_000;
 
@@ -74,6 +122,7 @@ export default function ServerPage() {
   const [points, setPoints] = useState<ServerRangePoint[]>([]);
   const [detail, setDetail] = useState<ServerDetailResponse | null>(null);
   const [services, setServices] = useState<ServicesResponse | null>(null);
+  const [pm2, setPm2] = useState<Pm2HealthResponse | null>(null);
   const [range, setRange] = useState('1h');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -102,23 +151,31 @@ export default function ServerPage() {
     return (await response.json()) as ServicesResponse;
   }, []);
 
+  const fetchPm2 = useCallback(async (): Promise<Pm2HealthResponse> => {
+    const response = await fetch('/api/metrics/server/pm2', { cache: 'no-store' });
+    if (!response.ok) throw new Error('Failed to fetch PM2 process health');
+    return (await response.json()) as Pm2HealthResponse;
+  }, []);
+
   const refreshSnapshot = useCallback(async () => {
     try {
-      const [currentMetrics, rangeMetrics, serviceMetrics] = await Promise.all([
+      const [currentMetrics, rangeMetrics, serviceMetrics, pm2Metrics] = await Promise.all([
         fetchCurrent(),
         fetchRange(),
         fetchServices(),
+        fetchPm2(),
       ]);
       setCurrent(currentMetrics);
       setPoints(rangeMetrics.points);
       setServices(serviceMetrics);
+      setPm2(pm2Metrics);
       setError(null);
     } catch (err: unknown) {
       setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
-  }, [fetchCurrent, fetchRange, fetchServices]);
+  }, [fetchCurrent, fetchRange, fetchServices, fetchPm2]);
 
   const refreshDetail = useCallback(async () => {
     try {
@@ -206,6 +263,68 @@ export default function ServerPage() {
             processes={detail?.topProcesses ?? []}
             available={detail?.processExporterAvailable ?? false}
           />
+
+          <section className="panel-surface overflow-hidden rounded-lg">
+            <div className="flex items-center justify-between gap-4 border-b border-border bg-white/60 px-6 py-4">
+              <div className="flex items-center gap-3">
+                <Activity className="h-5 w-5 text-slate-950" />
+                <div>
+                  <h2 className="font-semibold">PM2 Process Health</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">Aplikasi Node yang berjalan lewat PM2 pada server ini</p>
+                </div>
+              </div>
+              <StatusIndicator status={pm2?.status ?? 'unknown'} text={pm2Text(pm2)} />
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-border bg-muted/50 text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-6 py-4 font-medium">App</th>
+                    <th className="px-6 py-4 font-medium">Status</th>
+                    <th className="px-6 py-4 font-medium">PM2 ID / PID</th>
+                    <th className="px-6 py-4 font-medium">CPU</th>
+                    <th className="px-6 py-4 font-medium">Memory</th>
+                    <th className="px-6 py-4 font-medium">Restart</th>
+                    <th className="px-6 py-4 font-medium">Uptime</th>
+                    <th className="px-6 py-4 font-medium">Required</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {(pm2?.processes || []).map((process) => (
+                    <tr key={`${process.name}:${process.pmId ?? 'missing'}`} className="transition-colors hover:bg-muted/50">
+                      <td className="px-6 py-4 font-medium">{process.name}</td>
+                      <td className="px-6 py-4">
+                        <StatusIndicator status={process.active ? 'healthy' : 'critical'} text={process.status} />
+                      </td>
+                      <td className="px-6 py-4 font-mono text-muted-foreground">
+                        {process.pmId === null ? '-' : process.pmId} / {process.pid === null ? '-' : process.pid}
+                      </td>
+                      <td className="px-6 py-4 font-mono text-muted-foreground">{process.cpuPercent === null ? '-' : `${process.cpuPercent}%`}</td>
+                      <td className="px-6 py-4 font-mono text-muted-foreground">{formatMemory(process.memoryBytes)}</td>
+                      <td className="px-6 py-4 font-mono text-muted-foreground">{process.restartCount ?? '-'}</td>
+                      <td className="px-6 py-4 font-mono text-muted-foreground">{formatUptime(process.uptimeMs)}</td>
+                      <td className="px-6 py-4 text-muted-foreground">{process.required ? 'Yes' : 'Optional'}</td>
+                    </tr>
+                  ))}
+                  {pm2?.available && pm2.processes.length === 0 && (
+                    <tr>
+                      <td className="px-6 py-8 text-center text-muted-foreground" colSpan={8}>Tidak ada proses PM2.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {pm2 && !pm2.available && (
+              <div className="border-t border-border bg-amber-50 px-6 py-4 text-sm text-amber-800">
+                PM2 belum bisa dibaca dari proses dashboard. Cek <code>PM2_BIN</code>, <code>PM2_HOME</code>, dan user PM2 yang menjalankan app. Detail: {pm2.error}
+              </div>
+            )}
+            {pm2?.available && pm2.requiredDown.length > 0 && (
+              <div className="border-t border-border bg-red-50 px-6 py-4 text-sm text-red-700">
+                Required PM2 app tidak online: {pm2.requiredDown.join(', ')}.
+              </div>
+            )}
+          </section>
 
           <section className="panel-surface overflow-hidden rounded-lg">
             <div className="flex items-center justify-between gap-4 border-b border-border bg-white/60 px-6 py-4">
