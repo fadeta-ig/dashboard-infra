@@ -181,7 +181,7 @@ Untuk membaca PM2 milik `root`, buat snapshot JSON yang bisa dibaca user dashboa
 
 ```bash
 sudo mkdir -p /var/lib/dashboard-infra
-sudo sh -c 'PM2_HOME=/root/.pm2 /usr/bin/pm2 jlist > /var/lib/dashboard-infra/root-pm2-jlist.json'
+sudo sh -c 'NO_COLOR=1 PM2_HOME=/root/.pm2 /usr/bin/pm2 jlist > /var/lib/dashboard-infra/root-pm2-jlist.json'
 sudo chown server-wig:server-wig /var/lib/dashboard-infra/root-pm2-jlist.json
 sudo chmod 640 /var/lib/dashboard-infra/root-pm2-jlist.json
 ```
@@ -189,7 +189,7 @@ sudo chmod 640 /var/lib/dashboard-infra/root-pm2-jlist.json
 Tambahkan cron root agar snapshot diperbarui setiap menit:
 
 ```cron
-* * * * * PM2_HOME=/root/.pm2 /usr/bin/pm2 jlist > /var/lib/dashboard-infra/root-pm2-jlist.json && chown server-wig:server-wig /var/lib/dashboard-infra/root-pm2-jlist.json && chmod 640 /var/lib/dashboard-infra/root-pm2-jlist.json
+* * * * * NO_COLOR=1 PM2_HOME=/root/.pm2 /usr/bin/pm2 jlist > /var/lib/dashboard-infra/root-pm2-jlist.json && chown server-wig:server-wig /var/lib/dashboard-infra/root-pm2-jlist.json && chmod 640 /var/lib/dashboard-infra/root-pm2-jlist.json
 ```
 
 Lalu set `.env` dashboard:

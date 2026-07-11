@@ -152,19 +152,37 @@ function appendMissingRequired(processes: Pm2ProcessHealth[], requiredApps: stri
   }
 }
 
+function stripAnsi(value: string) {
+  return value.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '');
+}
+
+function parsePm2Jlist(value: string) {
+  const clean = stripAnsi(value).trim();
+  const start = clean.indexOf('[');
+  const end = clean.lastIndexOf(']');
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error(`PM2 jlist output does not contain a JSON array: ${clean.slice(0, 120)}`);
+  }
+  const parsed = JSON.parse(clean.slice(start, end + 1)) as unknown;
+  if (!Array.isArray(parsed)) {
+    throw new Error('PM2 jlist output is not a JSON array');
+  }
+  return parsed as Pm2JlistItem[];
+}
+
 async function readCurrentSource(requiredApps: string[], label: string) {
   const { stdout } = await execFileAsync(pm2Binary(), ['jlist'], {
     timeout: PM2_TIMEOUT_MS,
     maxBuffer: 1024 * 1024,
     env: process.env,
   });
-  const parsed = JSON.parse(stdout) as Pm2JlistItem[];
+  const parsed = parsePm2Jlist(stdout);
   return parsed.map((item) => mapProcess(item, requiredApps, label));
 }
 
 async function readFileSource(requiredApps: string[], label: string, path: string) {
   const content = await readFile(path, 'utf8');
-  const parsed = JSON.parse(content) as Pm2JlistItem[];
+  const parsed = parsePm2Jlist(content);
   return parsed.map((item) => mapProcess(item, requiredApps, label));
 }
 
