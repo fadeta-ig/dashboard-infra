@@ -48,7 +48,7 @@ const DEFAULT_THRESHOLDS: MonitoringThresholds = {
     temperatureCelsius: { warning: 70, critical: 85 },
   },
   network: {
-    pingMs: { warning: 50, critical: 100 },
+    pingMs: { warning: 100, critical: 300 },
     jitterMs: { warning: 10, critical: 30 },
     packetLossPercent: { warning: 1, critical: 5 },
   },

@@ -777,13 +777,16 @@ interface IncidentCandidate {
 interface LatencyToleranceState {
   active: boolean;
   activeSinceIso: string | null;
+  criticalSinceIso?: string | null;
   lastSeenIso: string | null;
   lastStatus: string | null;
   lastValue: number | null;
 }
 
 const DEFAULT_LATENCY_TOLERANT_DOMAINS = ['fingerprint', 'cctv'];
-const DEFAULT_LATENCY_TOLERANT_WARNING_AFTER_MS = 5 * 60 * 1000;
+const DEFAULT_THRESHOLD_WARNING_AFTER_MS = 10 * 60 * 1000;
+const DEFAULT_THRESHOLD_CRITICAL_AFTER_MS = 3 * 60 * 1000;
+const DEFAULT_LATENCY_TOLERANT_WARNING_AFTER_MS = 15 * 60 * 1000;
 const DEFAULT_LATENCY_TOLERANT_CRITICAL_AFTER_MS = 8 * 60 * 60 * 1000;
 
 function readDurationMs(name: string, fallback: number) {
@@ -808,6 +811,23 @@ function latencyToleranceConfig() {
     domains: readCsvEnv('THRESHOLD_NETWORK_LATENCY_TOLERANT_DOMAINS', DEFAULT_LATENCY_TOLERANT_DOMAINS),
     warningAfterMs: readDurationMs('THRESHOLD_NETWORK_LATENCY_TOLERANT_WARNING_AFTER_MS', DEFAULT_LATENCY_TOLERANT_WARNING_AFTER_MS),
     criticalAfterMs: readDurationMs('THRESHOLD_NETWORK_LATENCY_TOLERANT_CRITICAL_AFTER_MS', DEFAULT_LATENCY_TOLERANT_CRITICAL_AFTER_MS),
+  };
+}
+
+function thresholdToleranceConfig(candidate: IncidentCandidate) {
+  if (isLatencyToleranceCandidate(candidate)) {
+    const config = latencyToleranceConfig();
+    return {
+      mode: 'latency_tolerant',
+      warningAfterMs: config.warningAfterMs,
+      criticalAfterMs: config.criticalAfterMs,
+    };
+  }
+
+  return {
+    mode: 'threshold',
+    warningAfterMs: readDurationMs('THRESHOLD_WARNING_PERSISTENCE_MS', DEFAULT_THRESHOLD_WARNING_AFTER_MS),
+    criticalAfterMs: readDurationMs('THRESHOLD_CRITICAL_PERSISTENCE_MS', DEFAULT_THRESHOLD_CRITICAL_AFTER_MS),
   };
 }
 
@@ -1047,27 +1067,34 @@ function openRowToAlertSnapshot(
   };
 }
 
-async function applyLatencyTolerance(candidate: IncidentCandidate, timestamp: string): Promise<IncidentCandidate> {
-  if (!isLatencyToleranceCandidate(candidate)) return candidate;
+function formatHours(ms: number) {
+  return Math.max(1, Math.round(ms / 3_600_000));
+}
 
-  const config = latencyToleranceConfig();
-  const stateKey = `latency:tolerance:${candidate.incidentKey}`;
+async function applyThresholdTolerance(candidate: IncidentCandidate, timestamp: string): Promise<IncidentCandidate> {
+  if (candidate.source !== 'threshold') return candidate;
+
+  const config = thresholdToleranceConfig(candidate);
+  const stateKey = `${config.mode}:tolerance:${candidate.incidentKey}`;
   const currentStatus = String(candidate.metadata.status || 'unknown');
+  const currentValue = typeof candidate.metadata.value === 'number' ? candidate.metadata.value : null;
 
   if (candidate.active !== true) {
     await setStoredState(stateKey, {
       active: false,
       activeSinceIso: null,
+      criticalSinceIso: null,
       lastSeenIso: timestamp,
       lastStatus: currentStatus,
-      lastValue: typeof candidate.metadata.value === 'number' ? candidate.metadata.value : null,
+      lastValue: currentValue,
     } satisfies LatencyToleranceState);
     return {
       ...candidate,
       metadata: {
         ...candidate.metadata,
-        tolerance: {
+        persistence: {
           enabled: true,
+          mode: config.mode,
           resetAt: timestamp,
           warningAfterMs: config.warningAfterMs,
           criticalAfterMs: config.criticalAfterMs,
@@ -1078,23 +1105,53 @@ async function applyLatencyTolerance(candidate: IncidentCandidate, timestamp: st
 
   const previousState = await getStoredState<LatencyToleranceState>(stateKey);
   const activeSinceIso = previousState?.active && previousState.activeSinceIso ? previousState.activeSinceIso : timestamp;
+  const isCriticalNow = candidate.severity === 'critical';
+  const criticalSinceIso = isCriticalNow
+    ? previousState?.active && previousState.criticalSinceIso
+      ? previousState.criticalSinceIso
+      : timestamp
+    : null;
   const badForMs = Math.max(0, new Date(timestamp).getTime() - new Date(activeSinceIso).getTime());
-  const latestValue = typeof candidate.metadata.value === 'number' ? candidate.metadata.value : null;
+  const criticalForMs = criticalSinceIso
+    ? Math.max(0, new Date(timestamp).getTime() - new Date(criticalSinceIso).getTime())
+    : 0;
   await setStoredState(stateKey, {
     active: true,
     activeSinceIso,
+    criticalSinceIso,
     lastSeenIso: timestamp,
     lastStatus: currentStatus,
-    lastValue: latestValue,
+    lastValue: currentValue,
   } satisfies LatencyToleranceState);
 
-  const toleranceMetadata = {
+  const persistenceMetadata = {
     enabled: true,
+    mode: config.mode,
     activeSince: activeSinceIso,
     badForSeconds: Math.round(badForMs / 1000),
+    criticalSince: criticalSinceIso,
+    criticalForSeconds: Math.round(criticalForMs / 1000),
     warningAfterMs: config.warningAfterMs,
     criticalAfterMs: config.criticalAfterMs,
   };
+
+  if (isCriticalNow && criticalForMs >= config.criticalAfterMs) {
+    const title = config.mode === 'latency_tolerant' && currentStatus === 'timeout'
+      ? `${candidate.entityLabel} timeout lebih dari ${formatHours(config.criticalAfterMs)} jam`
+      : candidate.title;
+    return {
+      ...candidate,
+      active: true,
+      severity: 'critical',
+      title,
+      metadata: {
+        ...candidate.metadata,
+        persistence: persistenceMetadata,
+      },
+      notifyOnOpen: true,
+      notifyOnResolved: true,
+    };
+  }
 
   if (badForMs < config.warningAfterMs) {
     return {
@@ -1103,24 +1160,8 @@ async function applyLatencyTolerance(candidate: IncidentCandidate, timestamp: st
       severity: 'warning',
       metadata: {
         ...candidate.metadata,
-        status: 'suppressed_flap',
-        tolerance: toleranceMetadata,
-      },
-      notifyOnOpen: false,
-      notifyOnResolved: false,
-    };
-  }
-
-  if (badForMs < config.criticalAfterMs) {
-    return {
-      ...candidate,
-      active: true,
-      severity: 'warning',
-      title: `${candidate.entityLabel} tidak stabil`,
-      metadata: {
-        ...candidate.metadata,
-        status: 'warning',
-        tolerance: toleranceMetadata,
+        status: 'suppressed_transient',
+        persistence: persistenceMetadata,
       },
       notifyOnOpen: false,
       notifyOnResolved: false,
@@ -1130,16 +1171,24 @@ async function applyLatencyTolerance(candidate: IncidentCandidate, timestamp: st
   return {
     ...candidate,
     active: true,
-    severity: 'critical',
-    title: `${candidate.entityLabel} timeout lebih dari ${Math.round(config.criticalAfterMs / 3_600_000)} jam`,
+    severity: 'warning',
+    title: `${candidate.entityLabel} tidak stabil`,
     metadata: {
       ...candidate.metadata,
-      status: 'critical_timeout',
-      tolerance: toleranceMetadata,
+      status: isCriticalNow ? 'critical_pending' : 'warning',
+      persistence: persistenceMetadata,
     },
-    notifyOnOpen: true,
-    notifyOnResolved: true,
+    notifyOnOpen: false,
+    notifyOnResolved: false,
   };
+}
+
+type OpenIncidentRow = Awaited<ReturnType<typeof getOpenIncidentMap>> extends Map<string, infer T> ? T : never;
+
+function shouldNotifyResolved(candidate: IncidentCandidate, openIncident: OpenIncidentRow) {
+  if (candidate.notifyOnResolved !== undefined) return candidate.notifyOnResolved !== false;
+  if (openIncident.source === 'threshold' && openIncident.severity === 'warning') return false;
+  return true;
 }
 
 async function processIncidentCandidate(
@@ -1148,7 +1197,7 @@ async function processIncidentCandidate(
   timestamp: string,
   maintenanceWindows: Awaited<ReturnType<typeof getActiveMaintenanceWindows>> = [],
 ) {
-  const candidate = await applyLatencyTolerance(rawCandidate, timestamp);
+  const candidate = await applyThresholdTolerance(rawCandidate, timestamp);
   const openIncident = openIncidents.get(candidate.incidentKey);
   const inMaintenance = maintenanceWindows.some((window) => maintenanceWindowMatches(window, candidate));
   if (inMaintenance) {
@@ -1205,7 +1254,7 @@ async function processIncidentCandidate(
       resolution: 'Condition recovered',
       latest: candidate.metadata,
     });
-    if (candidate.notifyOnResolved !== false) {
+    if (shouldNotifyResolved(candidate, openIncident)) {
       await dispatchIncidentAlert('resolved', openRowToAlertSnapshot(openIncident, timestamp));
     }
     return { opened: 0, resolved: 1 };
