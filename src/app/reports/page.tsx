@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Download, FileText, RefreshCcw } from 'lucide-react';
 import { format } from 'date-fns';
+import { PaginationControls } from '@/components/dashboard/pagination-controls';
 import { getErrorMessage } from '@/lib/metrics';
+import { paginateItems } from '@/lib/pagination';
 
 interface MonthlyReportTargetAvailability {
   targetKey: string;
@@ -122,6 +124,8 @@ export default function ReportsPage() {
   const [data, setData] = useState<MonthlyReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [availabilityPage, setAvailabilityPage] = useState(1);
+  const [incidentPage, setIncidentPage] = useState(1);
 
   const fetchData = useCallback(async (reportMonth: string) => {
     try {
@@ -147,6 +151,15 @@ export default function ReportsPage() {
   }, [fetchData, month]);
 
   const report = data?.report;
+
+  const pagedAvailabilityTargets = useMemo(
+    () => paginateItems(report?.availability.targets || [], availabilityPage),
+    [availabilityPage, report?.availability.targets],
+  );
+  const pagedTopIncidents = useMemo(
+    () => paginateItems(report?.topIncidents || [], incidentPage),
+    [incidentPage, report?.topIncidents],
+  );
 
   const pdfHref = useMemo(
     () => `/api/ops/reports/monthly/pdf?month=${encodeURIComponent(month)}`,
@@ -189,6 +202,8 @@ export default function ReportsPage() {
             onChange={(event) => {
               setLoading(true);
               setMonth(event.target.value || currentMonthValue());
+              setAvailabilityPage(1);
+              setIncidentPage(1);
             }}
             className="rounded-md border border-border bg-card px-3 py-2 text-sm"
           />
@@ -291,7 +306,7 @@ export default function ReportsPage() {
                 <p className="mt-1 text-xs text-muted-foreground">Target dengan ketersediaan terendah tampil di atas.</p>
               </div>
               <div className="grid gap-3 p-4 md:hidden">
-                {report.availability.targets.map((target) => (
+                {pagedAvailabilityTargets.items.map((target) => (
                   <article key={target.targetKey} className="space-y-3 rounded-lg border border-border bg-card p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -313,6 +328,9 @@ export default function ReportsPage() {
                     </div>
                   </article>
                 ))}
+                {pagedAvailabilityTargets.items.length === 0 && (
+                  <div className="px-4 py-8 text-center text-muted-foreground">Belum ada data target pada periode ini.</div>
+                )}
               </div>
               <div className="hidden overflow-x-auto md:block">
                 <table className="w-full text-left text-sm">
@@ -326,7 +344,7 @@ export default function ReportsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {report.availability.targets.map((target) => (
+                    {pagedAvailabilityTargets.items.map((target) => (
                       <tr key={target.targetKey} className="transition-colors hover:bg-muted/40">
                         <td className="px-5 py-4">
                           <p className="font-medium">{target.label}</p>
@@ -341,9 +359,21 @@ export default function ReportsPage() {
                         </td>
                       </tr>
                     ))}
+                    {pagedAvailabilityTargets.items.length === 0 && (
+                      <tr>
+                        <td className="px-5 py-8 text-center text-muted-foreground" colSpan={5}>
+                          Belum ada data target pada periode ini.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
+              <PaginationControls
+                pagination={pagedAvailabilityTargets.meta}
+                itemLabel="target"
+                onPageChange={setAvailabilityPage}
+              />
             </section>
 
             <section className="space-y-6">
@@ -389,7 +419,7 @@ export default function ReportsPage() {
               <p className="mt-1 text-xs text-muted-foreground">Diurutkan berdasarkan dampak durasi terlama di bulan terpilih.</p>
             </div>
             <div className="grid gap-3 p-4 md:hidden">
-              {report.topIncidents.map((incident) => (
+              {pagedTopIncidents.items.map((incident) => (
                 <article key={incident.id} className="space-y-3 rounded-lg border border-border bg-card p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -412,6 +442,9 @@ export default function ReportsPage() {
                   </div>
                 </article>
               ))}
+              {pagedTopIncidents.items.length === 0 && (
+                <div className="px-4 py-8 text-center text-muted-foreground">Tidak ada incident pada periode ini.</div>
+              )}
             </div>
             <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-sm">
@@ -426,7 +459,7 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {report.topIncidents.map((incident) => (
+                  {pagedTopIncidents.items.map((incident) => (
                     <tr key={incident.id} className="transition-colors hover:bg-muted/40">
                       <td className="px-5 py-4">
                         <p className="font-medium">{incident.title}</p>
@@ -443,9 +476,21 @@ export default function ReportsPage() {
                       <td className="px-5 py-4">{formatDuration(incident.impactedDurationSeconds)}</td>
                     </tr>
                   ))}
+                  {pagedTopIncidents.items.length === 0 && (
+                    <tr>
+                      <td className="px-5 py-8 text-center text-muted-foreground" colSpan={6}>
+                        Tidak ada incident pada periode ini.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
+            <PaginationControls
+              pagination={pagedTopIncidents.meta}
+              itemLabel="incident"
+              onPageChange={setIncidentPage}
+            />
           </section>
         </>
       )}

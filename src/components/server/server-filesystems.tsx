@@ -1,6 +1,9 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import { HardDrive } from 'lucide-react';
+import { PaginationControls } from '@/components/dashboard/pagination-controls';
+import { paginateItems } from '@/lib/pagination';
 import { cn } from '@/lib/utils';
 import type { FilesystemMount } from '@/lib/types';
 
@@ -58,6 +61,12 @@ function isPrometheusMount(mountpoint: string): boolean {
 }
 
 export function ServerFilesystems({ filesystems }: Props) {
+  const [page, setPage] = useState(1);
+  const pagedFilesystems = useMemo(
+    () => paginateItems(filesystems, page),
+    [filesystems, page],
+  );
+
   if (filesystems.length === 0) {
     return (
       <section className="panel-surface rounded-lg p-6">
@@ -77,7 +86,7 @@ export function ServerFilesystems({ filesystems }: Props) {
       </div>
 
       <div className="grid gap-3 p-4 md:hidden">
-        {filesystems.map((fs) => (
+        {pagedFilesystems.items.map((fs) => (
           <article key={fs.mountpoint} className="rounded-lg border border-border bg-card p-4 space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -125,7 +134,7 @@ export function ServerFilesystems({ filesystems }: Props) {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {filesystems.map((fs) => (
+            {pagedFilesystems.items.map((fs) => (
               <tr key={fs.mountpoint} className="hover:bg-muted/30 transition-colors">
                 <td className="px-5 py-3.5">
                   <div className="flex items-center gap-2">
@@ -167,6 +176,11 @@ export function ServerFilesystems({ filesystems }: Props) {
           </tbody>
         </table>
       </div>
+      <PaginationControls
+        pagination={pagedFilesystems.meta}
+        itemLabel="filesystem"
+        onPageChange={setPage}
+      />
     </section>
   );
 }

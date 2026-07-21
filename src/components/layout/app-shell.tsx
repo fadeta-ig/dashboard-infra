@@ -32,13 +32,13 @@ function ShellContent({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div 
         className={cn(
-          "flex-1 flex flex-col min-h-screen transition-all duration-300 ease-in-out",
+          "flex min-h-screen min-w-0 flex-1 flex-col transition-all duration-300 ease-in-out",
           isCollapsed ? "lg:pl-20" : "lg:pl-72"
         )}
       >
         <Topbar />
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 pt-20 lg:pt-8 bg-background/50">
-          <div className="max-w-7xl mx-auto">
+        <main className="min-w-0 flex-1 bg-background/50 p-4 pt-20 sm:p-6 lg:p-8 lg:pt-8">
+          <div className="mx-auto w-full min-w-0 max-w-7xl">
             {children}
           </div>
         </main>

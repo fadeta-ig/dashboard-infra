@@ -9,7 +9,6 @@ import { PaginationControls } from '@/components/dashboard/pagination-controls';
 import type { NetworkMetrics, NetworkRangePoint, NetworkTarget } from '@/lib/types';
 import { getErrorMessage } from '@/lib/metrics';
 import { paginateItems } from '@/lib/pagination';
-import { useStoredPageSize } from '@/lib/use-stored-page-size';
 import { cn } from '@/lib/utils';
 
 type NetworkRangeResponse = { range: string; points: NetworkRangePoint[] };
@@ -75,7 +74,6 @@ export default function NetworkPage() {
   const [hiddenTargets, setHiddenTargets] = useState<Set<string>>(new Set());
   const [targetSearch, setTargetSearch] = useState('');
   const [targetPage, setTargetPage] = useState(1);
-  const [targetPageSize, setTargetPageSize] = useStoredPageSize('network-targets');
 
   const fetchData = useCallback(async () => {
     try {
@@ -142,8 +140,8 @@ export default function NetworkPage() {
   }, [data?.additionalTargets, targetSearch]);
 
   const pagedAdditionalTargets = useMemo(
-    () => paginateItems(filteredAdditionalTargets, targetPage, targetPageSize),
-    [filteredAdditionalTargets, targetPage, targetPageSize],
+    () => paginateItems(filteredAdditionalTargets, targetPage),
+    [filteredAdditionalTargets, targetPage],
   );
 
   const toggleTarget = (id: string) => {
@@ -392,10 +390,6 @@ export default function NetworkPage() {
           pagination={pagedAdditionalTargets.meta}
           itemLabel="target"
           onPageChange={setTargetPage}
-          onPageSizeChange={(nextPageSize) => {
-            setTargetPageSize(nextPageSize);
-            setTargetPage(1);
-          }}
         />
       </section>
     </div>

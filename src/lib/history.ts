@@ -9,7 +9,7 @@ import { getReadinessSnapshot } from '@/lib/readiness';
 import { getServiceHealthSnapshot } from '@/lib/service-health';
 import { getMonitoringThresholds, thresholdStatus } from '@/lib/thresholds';
 import { getActiveMaintenanceWindows, getNetworkPingTargetConfigs, maintenanceWindowMatches } from '@/lib/config-store';
-import { paginationMeta, paginationOffset, type PaginationMeta } from '@/lib/pagination';
+import { DEFAULT_PAGE_SIZE, paginationMeta, paginationOffset, type PaginationMeta } from '@/lib/pagination';
 import { mysqlDateTimeToIsoString as toIsoString, toMysqlDateTime, utcDateKey as toDateKey } from '@/lib/time';
 
 export type IncidentSeverity = 'warning' | 'critical';
@@ -1563,7 +1563,7 @@ export async function listIncidentsPage(options: {
     `SELECT COUNT(*) AS total FROM monitoring_incidents ${whereSql}`,
     whereParams,
   );
-  const pagination = paginationMeta(Number(countRows[0]?.total || 0), options.page || 1, options.pageSize || 25);
+  const pagination = paginationMeta(Number(countRows[0]?.total || 0), options.page || 1, options.pageSize || DEFAULT_PAGE_SIZE);
   const offset = paginationOffset(pagination);
   const rows = await queryRows<RowDataPacket & {
     id: number;
@@ -1811,7 +1811,7 @@ export async function listAuditEventsPage(options: {
     `SELECT COUNT(*) AS total FROM monitoring_audit_events ${whereSql}`,
     whereParams,
   );
-  const pagination = paginationMeta(Number(countRows[0]?.total || 0), options.page || 1, options.pageSize || 25);
+  const pagination = paginationMeta(Number(countRows[0]?.total || 0), options.page || 1, options.pageSize || DEFAULT_PAGE_SIZE);
   const offset = paginationOffset(pagination);
   const rows = await queryRows<RowDataPacket & {
     id: number;

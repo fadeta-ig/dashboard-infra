@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     getNetworkPingTargetConfigs(),
     getSlaPolicyConfigs(),
     getActiveMaintenanceWindows(timestamp),
-    listIncidentsPage({ page: 1, pageSize: 20, status: 'open', sort: 'severity', direction: 'desc' }),
+    listIncidentsPage({ page: 1, pageSize: 10, status: 'open', sort: 'severity', direction: 'desc' }),
   ]);
 
   const network = buildNetworkMetrics(pingStatusData, pingLatencyData, timestamp, pingTargets);

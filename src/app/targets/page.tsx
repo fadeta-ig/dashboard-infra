@@ -8,7 +8,6 @@ import { PaginationControls } from '@/components/dashboard/pagination-controls';
 import type { TargetHealth } from '@/lib/types';
 import { getErrorMessage } from '@/lib/metrics';
 import { paginateItems } from '@/lib/pagination';
-import { useStoredPageSize } from '@/lib/use-stored-page-size';
 
 interface TargetsResponse {
   targets: TargetHealth[];
@@ -21,7 +20,6 @@ export default function TargetsPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useStoredPageSize('targets');
 
   const fetchData = useCallback(async () => {
     try {
@@ -64,8 +62,8 @@ export default function TargetsPage() {
   }, [data?.targets, searchTerm]);
 
   const pagedTargets = useMemo(
-    () => paginateItems(filteredTargets, page, pageSize),
-    [filteredTargets, page, pageSize],
+    () => paginateItems(filteredTargets, page),
+    [filteredTargets, page],
   );
 
   if (loading) {
@@ -194,10 +192,6 @@ export default function TargetsPage() {
           pagination={pagedTargets.meta}
           itemLabel="target"
           onPageChange={setPage}
-          onPageSizeChange={(nextPageSize) => {
-            setPageSize(nextPageSize);
-            setPage(1);
-          }}
         />
       </div>
     </div>

@@ -1,5 +1,5 @@
-export const DEFAULT_PAGE_SIZE = 25;
-export const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
+export const DEFAULT_PAGE_SIZE = 10;
+export const MAX_PAGE_SIZE = 10;
 
 export interface PaginationMeta {
   page: number;
@@ -16,7 +16,7 @@ export function normalizePageSize(value: number, fallback = DEFAULT_PAGE_SIZE) {
   if (!Number.isFinite(value)) return fallback;
   const normalized = Math.floor(value);
   if (normalized <= 0) return fallback;
-  return Math.min(normalized, PAGE_SIZE_OPTIONS[PAGE_SIZE_OPTIONS.length - 1]);
+  return Math.min(normalized, MAX_PAGE_SIZE);
 }
 
 export function paginationMeta(total: number, page: number, pageSize: number): PaginationMeta {
@@ -37,7 +37,7 @@ export function paginationOffset(meta: PaginationMeta) {
   return (meta.page - 1) * meta.pageSize;
 }
 
-export function paginateItems<T>(items: T[], page: number, pageSize: number) {
+export function paginateItems<T>(items: readonly T[], page: number, pageSize = DEFAULT_PAGE_SIZE) {
   const meta = paginationMeta(items.length, page, pageSize);
   const start = paginationOffset(meta);
   return {

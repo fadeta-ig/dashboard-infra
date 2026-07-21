@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, AlertTriangle, Gauge, ShieldCheck, Thermometer } from 'lucide-react';
 import { format } from 'date-fns';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { PaginationControls } from '@/components/dashboard/pagination-controls';
 import { getErrorMessage } from '@/lib/metrics';
+import { paginateItems } from '@/lib/pagination';
 
 interface HealthScoreRecord {
   id: number;
@@ -47,6 +49,7 @@ export default function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [healthPage, setHealthPage] = useState(1);
 
   const fetchData = useCallback(async (rangeDays: number) => {
     try {
@@ -96,6 +99,11 @@ export default function AnalyticsPage() {
     ) as Record<string, Array<{ date: string; avgValue: number | null; peakValue: number | null; p95Value: number | null }>>;
   }, [data?.capacityDaily]);
 
+  const pagedHealthScores = useMemo(
+    () => paginateItems(latestHealthByDomain, healthPage),
+    [healthPage, latestHealthByDomain],
+  );
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -133,6 +141,7 @@ export default function AnalyticsPage() {
               onClick={() => {
                 setLoading(true);
                 setDays(option);
+                setHealthPage(1);
               }}
               className={`rounded-sm px-3 py-1 text-sm font-medium transition-colors ${
                 days === option ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
@@ -183,7 +192,7 @@ export default function AnalyticsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {latestHealthByDomain.map((item) => (
+              {pagedHealthScores.items.map((item) => (
                 <tr key={item.domainKey} className="transition-colors hover:bg-muted/40">
                   <td className="px-5 py-4 font-medium capitalize">{item.domainKey}</td>
                   <td className="px-5 py-4">{item.score.toFixed(2)}</td>
@@ -191,9 +200,21 @@ export default function AnalyticsPage() {
                   <td className="px-5 py-4 font-mono text-xs">{format(new Date(item.scoreDate), 'dd MMM yyyy')}</td>
                 </tr>
               ))}
+              {pagedHealthScores.items.length === 0 && (
+                <tr>
+                  <td className="px-5 py-8 text-center text-muted-foreground" colSpan={4}>
+                    Belum ada health score yang tersimpan.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
+        <PaginationControls
+          pagination={pagedHealthScores.meta}
+          itemLabel="domain"
+          onPageChange={setHealthPage}
+        />
       </section>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">

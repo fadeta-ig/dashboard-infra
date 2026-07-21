@@ -21,7 +21,6 @@ import { PaginationControls } from '@/components/dashboard/pagination-controls';
 import type { MikrotikDiscoveryResponse } from '@/lib/types';
 import { getErrorMessage } from '@/lib/metrics';
 import { paginateItems } from '@/lib/pagination';
-import { useStoredPageSize } from '@/lib/use-stored-page-size';
 import { cn } from '@/lib/utils';
 
 interface InterfaceTraffic {
@@ -165,9 +164,7 @@ export default function MikrotikPage() {
   const [interfaceSearch, setInterfaceSearch] = useState('');
   const [discoverySearch, setDiscoverySearch] = useState('');
   const [interfacePage, setInterfacePage] = useState(1);
-  const [interfacePageSize, setInterfacePageSize] = useStoredPageSize('mikrotik-interfaces');
   const [discoveryPage, setDiscoveryPage] = useState(1);
-  const [discoveryPageSize, setDiscoveryPageSize] = useStoredPageSize('mikrotik-discovery');
 
   const fetchOverview = useCallback(async () => {
     try {
@@ -225,13 +222,13 @@ export default function MikrotikPage() {
   }, [data?.metrics, discoverySearch]);
 
   const pagedInterfaces = useMemo(
-    () => paginateItems(filteredInterfaces, interfacePage, interfacePageSize),
-    [filteredInterfaces, interfacePage, interfacePageSize],
+    () => paginateItems(filteredInterfaces, interfacePage),
+    [filteredInterfaces, interfacePage],
   );
 
   const pagedDiscoveryMetrics = useMemo(
-    () => paginateItems(filteredDiscoveryMetrics, discoveryPage, discoveryPageSize),
-    [filteredDiscoveryMetrics, discoveryPage, discoveryPageSize],
+    () => paginateItems(filteredDiscoveryMetrics, discoveryPage),
+    [filteredDiscoveryMetrics, discoveryPage],
   );
 
   const handleDiscovery = async () => {
@@ -504,10 +501,6 @@ export default function MikrotikPage() {
             pagination={pagedInterfaces.meta}
             itemLabel="interface"
             onPageChange={setInterfacePage}
-            onPageSizeChange={(nextPageSize) => {
-              setInterfacePageSize(nextPageSize);
-              setInterfacePage(1);
-            }}
           />
 
           {(overview?.missingRequiredMetrics || []).length > 0 && (
@@ -608,10 +601,6 @@ export default function MikrotikPage() {
             pagination={pagedDiscoveryMetrics.meta}
             itemLabel="metric"
             onPageChange={setDiscoveryPage}
-            onPageSizeChange={(nextPageSize) => {
-              setDiscoveryPageSize(nextPageSize);
-              setDiscoveryPage(1);
-            }}
           />
         </section>
       )}

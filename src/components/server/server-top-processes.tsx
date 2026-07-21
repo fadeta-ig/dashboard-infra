@@ -1,6 +1,9 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import { Activity } from 'lucide-react';
+import { PaginationControls } from '@/components/dashboard/pagination-controls';
+import { paginateItems } from '@/lib/pagination';
 import type { TopProcess } from '@/lib/types';
 
 interface Props {
@@ -73,6 +76,12 @@ function InstallGuide() {
 }
 
 export function ServerTopProcesses({ processes, available }: Props) {
+  const [page, setPage] = useState(1);
+  const pagedProcesses = useMemo(
+    () => paginateItems(processes, page),
+    [page, processes],
+  );
+
   return (
     <section className="panel-surface rounded-lg overflow-hidden">
       <div className="px-6 py-4 border-b border-border flex items-center justify-between gap-4">
@@ -99,7 +108,7 @@ export function ServerTopProcesses({ processes, available }: Props) {
       ) : (
         <>
           <div className="grid gap-3 p-4 md:hidden">
-            {processes.map((proc) => (
+            {pagedProcesses.items.map((proc) => (
               <article key={proc.name} className="rounded-lg border border-border bg-card p-4 space-y-3">
                 <div>
                   <p className="font-mono font-medium text-slate-800 break-all">{proc.name}</p>
@@ -132,7 +141,7 @@ export function ServerTopProcesses({ processes, available }: Props) {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {processes.map((proc) => (
+              {pagedProcesses.items.map((proc) => (
                 <tr key={proc.name} className="hover:bg-muted/30 transition-colors">
                   <td className="px-5 py-3.5 font-mono font-medium text-slate-800">{proc.name}</td>
                   <td className="px-5 py-3.5">
@@ -145,6 +154,11 @@ export function ServerTopProcesses({ processes, available }: Props) {
             </tbody>
           </table>
           </div>
+          <PaginationControls
+            pagination={pagedProcesses.meta}
+            itemLabel="proses"
+            onPageChange={setPage}
+          />
         </>
       )}
     </section>

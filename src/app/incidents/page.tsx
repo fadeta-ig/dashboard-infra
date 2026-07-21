@@ -7,8 +7,7 @@ import { StatusIndicator } from '@/components/dashboard/status-indicator';
 import { PaginationControls } from '@/components/dashboard/pagination-controls';
 import { SortHeaderButton } from '@/components/dashboard/sort-header-button';
 import { getErrorMessage } from '@/lib/metrics';
-import { type PaginationMeta } from '@/lib/pagination';
-import { useStoredPageSize } from '@/lib/use-stored-page-size';
+import { DEFAULT_PAGE_SIZE, type PaginationMeta } from '@/lib/pagination';
 
 interface IncidentRecord {
   id: number;
@@ -75,14 +74,13 @@ export default function IncidentsPage() {
   const [sortBy, setSortBy] = useState<IncidentSort>('startedAt');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useStoredPageSize('incidents');
   const [ackingId, setAckingId] = useState<number | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
       const params = new URLSearchParams({
         page: String(page),
-        pageSize: String(pageSize),
+        pageSize: String(DEFAULT_PAGE_SIZE),
         sort: sortBy,
         direction: sortDirection,
       });
@@ -99,7 +97,7 @@ export default function IncidentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, searchTerm, sortBy, sortDirection, statusFilter]);
+  }, [page, searchTerm, sortBy, sortDirection, statusFilter]);
 
   const handleSort = (sortKey: IncidentSort) => {
     if (sortKey === sortBy) {
@@ -419,10 +417,6 @@ export default function IncidentsPage() {
             pagination={data.pagination}
             itemLabel="incident"
             onPageChange={setPage}
-            onPageSizeChange={(nextPageSize) => {
-              setPageSize(nextPageSize);
-              setPage(1);
-            }}
           />
         )}
       </section>

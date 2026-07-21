@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, ServerCog } from 'lucide-react';
+import { PaginationControls } from '@/components/dashboard/pagination-controls';
 import { StatusIndicator } from '@/components/dashboard/status-indicator';
 import { ServerSnapshotGrid } from '@/components/server/server-snapshot-grid';
 import { ServerCharts } from '@/components/server/server-charts';
@@ -11,6 +12,7 @@ import { ServerTopProcesses } from '@/components/server/server-top-processes';
 import { ServerRebootBanner } from '@/components/server/server-reboot-banner';
 import type { ServerDetailResponse, ServerMetrics, ServerRangePoint } from '@/lib/types';
 import { getErrorMessage } from '@/lib/metrics';
+import { paginateItems } from '@/lib/pagination';
 
 type ServerCurrentResponse = ServerMetrics & { timestamp: string };
 type ServerRangeResponse = { range: string; points: ServerRangePoint[] };
@@ -128,6 +130,8 @@ export default function ServerPage() {
   const [range, setRange] = useState('1h');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pm2Page, setPm2Page] = useState(1);
+  const [servicePage, setServicePage] = useState(1);
 
   const fetchCurrent = useCallback(async (): Promise<ServerCurrentResponse> => {
     const response = await fetch('/api/metrics/server', { cache: 'no-store' });
@@ -202,6 +206,15 @@ export default function ServerPage() {
       window.clearInterval(detailInterval);
     };
   }, [refreshSnapshot, refreshDetail]);
+
+  const pagedPm2Processes = useMemo(
+    () => paginateItems(pm2?.processes || [], pm2Page),
+    [pm2?.processes, pm2Page],
+  );
+  const pagedServices = useMemo(
+    () => paginateItems(services?.services || [], servicePage),
+    [servicePage, services?.services],
+  );
 
   return (
     <div className="animate-fade-in animate-slide-up space-y-6">
@@ -293,7 +306,7 @@ export default function ServerPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {(pm2?.processes || []).map((process) => (
+                  {pagedPm2Processes.items.map((process) => (
                     <tr key={`${process.source}:${process.name}:${process.pmId ?? 'missing'}`} className="transition-colors hover:bg-muted/50">
                       <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{process.source}</td>
                       <td className="px-6 py-4 font-medium">{process.name}</td>
@@ -310,14 +323,21 @@ export default function ServerPage() {
                       <td className="px-6 py-4 text-muted-foreground">{process.required ? 'Yes' : 'Optional'}</td>
                     </tr>
                   ))}
-                  {pm2?.available && pm2.processes.length === 0 && (
+                  {pagedPm2Processes.items.length === 0 && (
                     <tr>
-                      <td className="px-6 py-8 text-center text-muted-foreground" colSpan={9}>Tidak ada proses PM2.</td>
+                      <td className="px-6 py-8 text-center text-muted-foreground" colSpan={9}>
+                        {pm2?.available ? 'Tidak ada proses PM2.' : 'Data proses PM2 belum tersedia.'}
+                      </td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
+            <PaginationControls
+              pagination={pagedPm2Processes.meta}
+              itemLabel="proses PM2"
+              onPageChange={setPm2Page}
+            />
             {pm2 && !pm2.available && (
               <div className="border-t border-border bg-amber-50 px-6 py-4 text-sm text-amber-800">
                 PM2 belum bisa dibaca dari semua source. Cek <code>PM2_BIN</code>, <code>PM2_HOME</code>, file snapshot root, dan permission. Detail: {pm2.error}
@@ -357,7 +377,7 @@ export default function ServerPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {(services?.services || []).map((service) => (
+                  {pagedServices.items.map((service) => (
                     <tr key={service.key} className="transition-colors hover:bg-muted/50">
                       <td className="px-6 py-4 font-medium">{service.label}</td>
                       <td className="px-6 py-4">
@@ -367,9 +387,21 @@ export default function ServerPage() {
                       <td className="px-6 py-4 text-muted-foreground">{service.required ? 'Yes' : 'Optional'}</td>
                     </tr>
                   ))}
+                  {pagedServices.items.length === 0 && (
+                    <tr>
+                      <td className="px-6 py-8 text-center text-muted-foreground" colSpan={4}>
+                        Data service Ubuntu belum tersedia.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
+            <PaginationControls
+              pagination={pagedServices.meta}
+              itemLabel="service"
+              onPageChange={setServicePage}
+            />
             {services && !services.collectorAvailable && (
               <div className="border-t border-border bg-amber-50 px-6 py-4 text-sm text-amber-800">
                 Metric <code>node_systemd_unit_state</code> belum tersedia. Aktifkan Node Exporter systemd collector.

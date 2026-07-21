@@ -7,8 +7,7 @@ import { StatusIndicator } from '@/components/dashboard/status-indicator';
 import { PaginationControls } from '@/components/dashboard/pagination-controls';
 import { SortHeaderButton } from '@/components/dashboard/sort-header-button';
 import { getErrorMessage } from '@/lib/metrics';
-import { type PaginationMeta } from '@/lib/pagination';
-import { useStoredPageSize } from '@/lib/use-stored-page-size';
+import { DEFAULT_PAGE_SIZE, type PaginationMeta } from '@/lib/pagination';
 
 interface AuditEventRecord {
   id: number;
@@ -55,13 +54,12 @@ export default function AuditPage() {
   const [sortBy, setSortBy] = useState<AuditSort>('eventAt');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useStoredPageSize('audit');
 
   const fetchData = useCallback(async () => {
     try {
       const params = new URLSearchParams({
         page: String(page),
-        pageSize: String(pageSize),
+        pageSize: String(DEFAULT_PAGE_SIZE),
         sort: sortBy,
         direction: sortDirection,
       });
@@ -78,7 +76,7 @@ export default function AuditPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, searchTerm, severityFilter, sortBy, sortDirection]);
+  }, [page, searchTerm, severityFilter, sortBy, sortDirection]);
 
   const handleSort = (sortKey: AuditSort) => {
     if (sortKey === sortBy) {
@@ -299,6 +297,13 @@ export default function AuditPage() {
                   <td className="px-5 py-4 font-mono text-xs">{format(new Date(event.eventAt), 'dd MMM yyyy HH:mm')}</td>
                 </tr>
               ))}
+              {events.length === 0 && (
+                <tr>
+                  <td className="px-5 py-8 text-center text-muted-foreground" colSpan={6}>
+                    Belum ada audit event yang tersimpan.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -307,10 +312,6 @@ export default function AuditPage() {
             pagination={data.pagination}
             itemLabel="event"
             onPageChange={setPage}
-            onPageSizeChange={(nextPageSize) => {
-              setPageSize(nextPageSize);
-              setPage(1);
-            }}
           />
         )}
       </section>
