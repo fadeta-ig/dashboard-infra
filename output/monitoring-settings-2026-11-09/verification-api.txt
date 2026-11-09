@@ -1,0 +1,16 @@
+✔ Anonymous config API access is rejected (137.8134ms)
+✔ Config API rejects collector-token-only mutation and foreign origin (1299.3446ms)
+✔ Validation rejects invalid IP and missing version without writing (433.5015ms)
+✔ Save, conflict and restore work through authenticated HTTP API (370.0596ms)
+✔ HTTP uplink transfer and restore update all three entries (232.1402ms)
+✔ Freshness uses source sample timestamp, not fresh HTTP response time (164.9713ms)
+✔ Completed collector cycle persists a fresh heartbeat (2409.6921ms)
+✔ Retiring a required PM2 app closes its incident without claiming recovery (2627.8742ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7690.8216

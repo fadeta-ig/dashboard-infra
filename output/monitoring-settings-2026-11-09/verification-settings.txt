@@ -1,0 +1,28 @@
+✔ Accept IPv4, IPv6 and hostnames; reject invalid addresses and URLs (1.5995ms)
+✔ Network identity and display label remain synchronized (0.673ms)
+✔ Reject missing concurrency version and mismatched interface identity (0.7611ms)
+✔ Reject negative capacity and WAN totals on an unused port (0.3881ms)
+✔ Reject malformed optional fields and self-parent interfaces (0.5908ms)
+✔ Reject reversed maintenance dates and invalid SLA (1.5013ms)
+✔ Transfer changes exactly three interfaces without double-counting WAN (0.4552ms)
+✔ Reject transfer into an occupied port or wrong PPPoE (0.2893ms)
+✔ PM2 exact-source override precedes wildcard and legacy env rules (0.2833ms)
+✔ Freshness rejects old, missing and future timestamps (0.28ms)
+✔ Migrate legacy config schema; round-trip native MySQL JSON payloads (165.7375ms)
+✔ Stale version rejects entire three-interface transaction and revision history (33.6927ms)
+✔ Transfer commits all interfaces and records actor plus before/after (16.737ms)
+✔ Restore is atomic and stale restore cannot overwrite newer values (21.2574ms)
+✔ Concurrent saves with same version permit exactly one winner (12.0815ms)
+✔ Disabled targets do not reappear from static fallback (61.9341ms)
+✔ Rollback of a newly created policy deactivates it without deletion (17.2533ms)
+✔ Fresh snapshot identifies source and healthy required app (15.7883ms)
+✔ Stale PM2 snapshot never reports its old online state as live/down (6.0332ms)
+✔ Source-specific stored policy overrides legacy required entry without restart (12.497ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 839.1314

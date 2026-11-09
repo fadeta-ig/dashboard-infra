@@ -4,6 +4,7 @@ import { executeStatement, getDatabaseUnavailableReason, getPool, isDatabaseConf
 import { buildNetworkMetrics, buildServerMetrics, buildTargets, nowIso, PROMQL } from '@/lib/metrics';
 import { getMikrotikTemperatureRange, getMikrotikTemperatureSnapshot } from '@/lib/mikrotik-temperature';
 import { getPm2HealthSnapshot } from '@/lib/pm2-health';
+import { resolvePm2Policy } from '@/lib/pm2-policy';
 import { prometheusInstantQuery, prometheusRangeQuery } from '@/lib/prometheus';
 import { getReadinessSnapshot } from '@/lib/readiness';
 import { getServiceHealthSnapshot } from '@/lib/service-health';
@@ -215,6 +216,7 @@ const SCHEMA_STATEMENTS = [
 ];
 
 function safeJsonParse(value: unknown) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
   if (typeof value !== 'string') return {};
   try {
     return JSON.parse(value) as Record<string, unknown>;
@@ -997,12 +999,19 @@ function buildPm2IncidentCandidates(snapshot: Awaited<ReturnType<typeof collectC
     },
   };
 
-  if (!snapshot.pm2.available) return [collectorCandidate];
+  if (!snapshot.pm2.available || !snapshot.pm2.policyAvailable) return [{ ...collectorCandidate, active: true }];
 
   return [
     collectorCandidate,
+    ...snapshot.pm2.sources.map((source): IncidentCandidate => ({
+      active: !source.available,
+      source: 'pm2', domainKey: 'server', incidentKey: `pm2:source:${source.label}`,
+      title: `Source PM2 ${source.label} tidak tersedia atau kedaluwarsa`, severity: 'warning',
+      entityType: 'pm2', entityKey: `pm2:source:${source.label}`, entityLabel: source.label,
+      metadata: { error: source.error, freshness: source.freshness },
+    })),
     ...snapshot.pm2.processes
-      .filter((app) => app.required)
+      .filter((app) => app.required && snapshot.pm2.sources.some((source) => source.label === app.source && source.available))
       .map((app): IncidentCandidate => ({
         active: !app.active,
         source: 'pm2',
@@ -1292,6 +1301,21 @@ export async function runHistoryCollection() {
     resolvedCount += result.resolved;
   }
 
+  // Retiring a monitoring requirement closes its old incident without claiming service recovery.
+  if (snapshot.pm2.policyAvailable) {
+    for (const incident of openIncidents.values()) {
+      if (incident.source !== 'pm2' || incident.entity_type !== 'pm2_process') continue;
+      const separator = incident.entity_key.indexOf(':');
+      if (separator < 1) continue;
+      const source = incident.entity_key.slice(0, separator), name = incident.entity_key.slice(separator + 1);
+      if (resolvePm2Policy(source, name, snapshot.pm2.policyOverrides, snapshot.pm2.environmentPolicy.requiredApps, snapshot.pm2.environmentPolicy.ignoredApps) === 'required') continue;
+      await resolveIncident(incident.id, incident.started_at, snapshot.timestamp, { resolution: 'Monitoring requirement removed', previous: safeJsonParse(incident.metadata_json) });
+      await insertAuditEvent({ eventType: 'pm2_monitoring_retired', source: 'pm2', severity: 'info', entityKey: incident.entity_key, entityLabel: incident.entity_label, message: 'Insiden ditutup karena aplikasi tidak lagi diwajibkan oleh kebijakan monitoring; pemulihan layanan tidak dinyatakan.', payload: { incidentId: incident.id }, eventAtIso: snapshot.timestamp });
+      resolvedCount += 1;
+      auditCount += 1;
+    }
+  }
+
   const previousRebootState = await getStoredState<{ rebootRequired: boolean | null }>('server:reboot-required');
   if (previousRebootState?.rebootRequired !== snapshot.server.rebootRequired) {
     await insertAuditEvent({
@@ -1433,6 +1457,7 @@ export async function runHistoryCollection() {
   }
 
   await updateCapacitySnapshots(snapshot);
+  await setStoredState('collector:heartbeat', { completedAt: nowIso(), startedAt: snapshot.timestamp });
 
   return {
     ok: true,

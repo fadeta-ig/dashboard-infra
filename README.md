@@ -153,6 +153,39 @@ curl -s 'http://127.0.0.1:9100/metrics' | grep 'node_systemd_unit_state' | egrep
 
 ## PM2 Process Health
 
+### Pengaturan operasional melalui dashboard
+
+Halaman `/settings` menyediakan form khusus untuk perangkat/IP, interface/ISP, kebijakan PM2, service Ubuntu, SLA, dan maintenance. Editor JSON tidak diperlukan. Identitas entri lama dikunci; perubahan ditampilkan dalam pratinjau sebelum disimpan.
+
+- **Interface & ISP → Pindahkan uplink ISP** memperbarui mapping port asal, port tujuan yang masih `unused`, dan keterangan/induk PPPoE dari ISP yang sama dalam satu transaksi. Port fisik tetap dikecualikan dari total WAN; PPPoE tetap menjadi sumber total. Fitur ini hanya mengubah monitoring, bukan konfigurasi router atau kabel.
+- **Aplikasi PM2** mengatur mode `required`, `optional`, atau `ignored` berdasarkan `source:nama-aplikasi`. Source harus sama dengan label yang muncul pada panel source PM2. Source `*` berlaku untuk semua source. Kebijakan source spesifik diprioritaskan, kemudian wildcard, lalu environment. Kebijakan yang dinonaktifkan tidak menimpa environment. Ini bukan tombol start/stop/restart proses.
+- **Riwayat** mencatat actor, waktu, serta nilai sebelum/sesudah. Pemulihan menggunakan versi tersimpan dan ditolak jika entri sudah berubah lagi. Pemulihan entri yang baru dibuat akan menonaktifkannya. Pemindahan uplink dipulihkan sebagai satu transaksi.
+- Versi konfigurasi mencegah edit bersamaan menimpa perubahan terbaru. Menonaktifkan semua entri dalam suatu kategori menghasilkan daftar kosong, tanpa mengaktifkan ulang default statis.
+- Perubahan IP target pada dashboard masih perlu disamakan dengan scrape target Prometheus. Sinkronisasi konfigurasi Prometheus otomatis belum termasuk fitur ini.
+
+Skema tambahan: kolom `monitoring_config_items.revision` serta tabel `monitoring_config_revisions`. Jalankan `node scripts/init-monitoring-storage.mjs` dengan environment production yang benar saat deploy; migrasi mempertahankan entri yang ada. Runtime juga memeriksa migrasi saat konfigurasi pertama diakses.
+
+Panel **Kualitas data monitoring** pada Overview, Server, dan Settings memperlihatkan kesegaran sampel `up` Prometheus, koneksi MySQL, dan heartbeat siklus collector yang selesai. Waktu respons API tidak dipakai sebagai pengganti waktu sampel metrik. Heartbeat awal baru ada setelah collector sukses menyelesaikan siklus dengan versi baru.
+
+Environment opsional:
+
+```env
+PM2_SNAPSHOT_MAX_AGE_MS=180000
+METRICS_MAX_AGE_MS=180000
+```
+
+Default keduanya 180000 ms. Heartbeat collector memakai batas tiga kali `HISTORY_COLLECT_INTERVAL_MS`. Snapshot PM2 yang melebihi batas, atau lebih dari 30 detik di masa depan, ditandai kedaluwarsa dan tidak dipakai untuk menyatakan aplikasi online/down. Gangguan source ditangani terpisah dari gangguan aplikasi. Kesegaran data tidak sama dengan kesehatan layanan: sampel target DOWN juga dapat merupakan data terkini.
+
+API tambahan: `GET /api/metrics/health`. `POST /api/ops/config` memerlukan session login, `expectedVersion` (string versi entri lama, atau `null` untuk entri baru), serta payload tervalidasi. Konflik versi mengembalikan HTTP 409; penyimpanan tidak tersedia mengembalikan HTTP 503. Aksi `transfer` dan `restore` memakai pemeriksaan versi yang sama. Token collector tidak dapat digunakan untuk mengubah konfigurasi.
+
+Pemeriksaan terarah:
+
+```bash
+npm run verify:settings
+```
+
+Pemeriksaan transaksi database tersedia melalui `node scripts/verify-monitoring-settings.mjs --integration`; script hanya menerima database baru `infra_verify_*` pada `127.0.0.1:33079`, terpisah dari penyimpanan operasional. Tidak termasuk full test suite.
+
 Halaman `/server` membaca `pm2 jlist` dari proses dashboard untuk menampilkan aplikasi PM2, status online, PID, CPU, memory, restart count, dan uptime. PM2 bersifat per-user; PM2 milik `root` tidak otomatis terlihat oleh dashboard yang berjalan sebagai user `server-wig`.
 
 Default required app:

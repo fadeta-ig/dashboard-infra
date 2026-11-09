@@ -76,6 +76,7 @@ async function ensureIndex(tableName, indexName, statement) {
 }
 
 async function runMigrations() {
+  await ensureColumn('monitoring_config_items', 'revision', 'ALTER TABLE monitoring_config_items ADD COLUMN revision BIGINT UNSIGNED NOT NULL DEFAULT 1');
   await ensureColumn(
     'monitoring_incidents',
     'acknowledged_at',
@@ -216,11 +217,22 @@ const schemaStatements = [
     enabled TINYINT(1) NOT NULL DEFAULT 1,
     sort_order INT NOT NULL DEFAULT 0,
     payload_json JSON NULL,
+    revision BIGINT UNSIGNED NOT NULL DEFAULT 1,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uniq_monitoring_config_items_type_key (item_type, item_key),
     KEY idx_monitoring_config_items_type_enabled (item_type, enabled),
     KEY idx_monitoring_config_items_sort (item_type, sort_order)
+  )`,
+  `CREATE TABLE IF NOT EXISTS monitoring_config_revisions (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    change_id CHAR(36) NOT NULL,
+    actor VARCHAR(191) NOT NULL,
+    operation VARCHAR(32) NOT NULL,
+    before_json JSON NOT NULL,
+    after_json JSON NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_config_change (change_id)
   )`,
 ];
 

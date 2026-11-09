@@ -6,6 +6,8 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { SummaryResponse, ServerMetrics } from '@/lib/types';
 import { getErrorMessage } from '@/lib/metrics';
+import { MonitoringHealth } from '@/components/dashboard/monitoring-health';
+import type { Freshness } from '@/lib/freshness';
 
 interface ReadinessCategorySummary {
   key: string;
@@ -46,6 +48,7 @@ export default function SummaryDashboard() {
   const [readiness, setReadiness] = useState<ReadinessSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [metricsFreshness, setMetricsFreshness] = useState<Freshness['state']>('unavailable');
 
   const fetchData = useCallback(async () => {
     try {
@@ -108,7 +111,7 @@ export default function SummaryDashboard() {
     );
   }
 
-  const isHealthy = data.status === 'healthy';
+  const isHealthy = metricsFreshness === 'fresh' && data.status === 'healthy';
   const upTargets = data.targets.filter((t) => t.up).length;
   const totalTargets = data.targets.length;
   const downTargets = data.targets.filter((t) => !t.up);
@@ -128,12 +131,13 @@ export default function SummaryDashboard() {
         <div className="flex items-center gap-2 text-sm">
           <span className="text-slate-500">Status:</span>
           <div className="flex items-center gap-1.5 font-medium">
-            <span className={cn("inline-block h-2 w-2 rounded-full", isHealthy ? "bg-emerald-500" : data.status === 'warning' ? 'bg-amber-500' : 'bg-red-500')} />
-            <span className="capitalize text-slate-900">{data.status}</span>
+            <span className={cn("inline-block h-2 w-2 rounded-full", metricsFreshness !== 'fresh' ? 'bg-slate-400' : isHealthy ? "bg-emerald-500" : data.status === 'warning' ? 'bg-amber-500' : 'bg-red-500')} />
+            <span className="capitalize text-slate-900">{metricsFreshness === 'fresh' ? data.status : 'Belum terkonfirmasi'}</span>
           </div>
         </div>
       </div>
 
+      <MonitoringHealth onMetricsFreshnessChange={setMetricsFreshness} />
       {/* Flat Grid Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         
@@ -143,7 +147,7 @@ export default function SummaryDashboard() {
             <div className="flex items-start justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">
-                  {isHealthy ? 'System Operational' : 'Action Required'}
+                  {metricsFreshness !== 'fresh' ? 'Kesegaran data perlu diperiksa' : isHealthy ? 'System Operational' : 'Action Required'}
                 </h2>
                 <p className="text-sm text-slate-500 mt-1">
                   {upTargets} of {totalTargets} targets are active and responding.

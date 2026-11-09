@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:ci": "npm run lint && npm run build",
+    "verify:settings": "node scripts/verify-monitoring-settings.mjs",
     "backup:mysql": "node scripts/backup-mysql.mjs",
     "deploy:check": "node scripts/deploy-check.mjs",
     "deploy": "npm run deploy:check && git pull && npm install && npm run build && node scripts/init-monitoring-storage.mjs && pm2 startOrReload ecosystem.config.cjs --update-env",

@@ -13,6 +13,8 @@ import { ServerRebootBanner } from '@/components/server/server-reboot-banner';
 import type { ServerDetailResponse, ServerMetrics, ServerRangePoint } from '@/lib/types';
 import { getErrorMessage } from '@/lib/metrics';
 import { paginateItems } from '@/lib/pagination';
+import { MonitoringHealth, freshnessLabels, freshnessTones } from '@/components/dashboard/monitoring-health';
+import type { Pm2HealthSnapshot } from '@/lib/pm2-health';
 
 type ServerCurrentResponse = ServerMetrics & { timestamp: string };
 type ServerRangeResponse = { range: string; points: ServerRangePoint[] };
@@ -43,33 +45,7 @@ interface ServicesResponse {
   timestamp: string;
 }
 
-interface Pm2ProcessHealth {
-  source: string;
-  name: string;
-  pmId: number | null;
-  pid: number | null;
-  status: string;
-  active: boolean;
-  required: boolean;
-  cpuPercent: number | null;
-  memoryBytes: number | null;
-  restartCount: number | null;
-  unstableRestartCount: number | null;
-  uptimeMs: number | null;
-  execMode: string | null;
-  instances: string | null;
-}
-
-interface Pm2HealthResponse {
-  available: boolean;
-  status: 'healthy' | 'warning' | 'critical' | 'unknown';
-  requiredApps: string[];
-  requiredDown: string[];
-  processes: Pm2ProcessHealth[];
-  sources: Array<{ label: string; available: boolean; error: string | null }>;
-  error: string | null;
-  timestamp: string;
-}
+type Pm2HealthResponse = Pm2HealthSnapshot;
 
 function serviceStatus(service: ServiceHealth): 'healthy' | 'critical' | 'unknown' {
   if (!service.metricAvailable || service.active === null) return 'unknown';
@@ -240,6 +216,7 @@ export default function ServerPage() {
         </div>
       </div>
 
+      <MonitoringHealth />
       {error ? (
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6">
           <h2 className="flex items-center gap-2 text-lg font-bold text-destructive">
@@ -290,6 +267,12 @@ export default function ServerPage() {
               </div>
               <StatusIndicator status={pm2?.status ?? 'unknown'} text={pm2Text(pm2)} />
             </div>
+            <div className="grid gap-3 border-b border-border p-4 sm:grid-cols-2">
+              {pm2?.sources.map((source) => <div key={source.label} className="min-w-0 rounded-lg border border-slate-100 bg-slate-50/50 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-mono text-xs font-medium">{source.label}</span><span className={`rounded-full px-2 py-1 text-[11px] ring-1 ring-inset ${freshnessTones[source.freshness.state]}`}>{freshnessLabels[source.freshness.state]}</span></div>
+                <p className="mt-2 text-xs text-slate-500">{source.kind === 'local' ? 'User dashboard' : 'Snapshot user lain'} · {source.freshness.observedAt ? new Date(source.freshness.observedAt).toLocaleString('id-ID') : 'Belum ada data'}</p>
+              </div>)}
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-border bg-muted/50 text-xs uppercase text-muted-foreground">
@@ -311,7 +294,7 @@ export default function ServerPage() {
                       <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{process.source}</td>
                       <td className="px-6 py-4 font-medium">{process.name}</td>
                       <td className="px-6 py-4">
-                        <StatusIndicator status={process.active ? 'healthy' : 'critical'} text={process.status} />
+                        <StatusIndicator status={process.status === 'unknown' ? 'unknown' : process.active ? 'healthy' : process.required ? 'critical' : 'warning'} text={process.status} />
                       </td>
                       <td className="px-6 py-4 font-mono text-muted-foreground">
                         {process.pmId === null ? '-' : process.pmId} / {process.pid === null ? '-' : process.pid}

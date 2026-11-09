@@ -1,6 +1,9 @@
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { open } from 'node:fs/promises';
 import { promisify } from 'node:util';
+import { listConfigItems } from '@/lib/config-store';
+import { evaluateFreshness, type Freshness } from '@/lib/freshness';
+import { resolvePm2Policy, type Pm2AppPolicy } from '@/lib/pm2-policy';
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_REQUIRED_APPS = ['dashboard-infra', 'dashboard-history-collector'];
@@ -50,7 +53,11 @@ export interface Pm2HealthSnapshot {
   requiredApps: string[];
   requiredDown: string[];
   processes: Pm2ProcessHealth[];
-  sources: Array<{ label: string; available: boolean; error: string | null }>;
+  sources: Array<{ label: string; available: boolean; error: string | null; kind: 'local' | 'snapshot'; freshness: Freshness }>;
+  policySource: 'database' | 'environment';
+  policyAvailable: boolean;
+  policyOverrides: Pm2AppPolicy[];
+  environmentPolicy: { requiredApps: string[]; ignoredApps: string[] };
   error: string | null;
   timestamp: string;
 }
@@ -80,10 +87,6 @@ function processKey(source: string, name: string) {
 
 function isRequiredProcess(requiredApps: string[], source: string, name: string) {
   return requiredApps.includes(name) || requiredApps.includes(processKey(source, name));
-}
-
-function isIgnoredProcess(ignoredApps: string[], source: string, name: string) {
-  return ignoredApps.includes(name) || ignoredApps.includes(processKey(source, name));
 }
 
 function mapProcess(item: Pm2JlistItem, requiredApps: string[], source: string): Pm2ProcessHealth {
@@ -161,7 +164,7 @@ function parsePm2Jlist(value: string) {
   const start = clean.indexOf('[');
   const end = clean.lastIndexOf(']');
   if (start === -1 || end === -1 || end < start) {
-    throw new Error(`PM2 jlist output does not contain a JSON array: ${clean.slice(0, 120)}`);
+    throw new Error('PM2 jlist output does not contain a JSON array');
   }
   const parsed = JSON.parse(clean.slice(start, end + 1)) as unknown;
   if (!Array.isArray(parsed)) {
@@ -180,61 +183,107 @@ async function readCurrentSource(requiredApps: string[], label: string) {
   return parsed.map((item) => mapProcess(item, requiredApps, label));
 }
 
-async function readFileSource(requiredApps: string[], label: string, path: string) {
-  const content = await readFile(path, 'utf8');
-  const parsed = parsePm2Jlist(content);
-  return parsed.map((item) => mapProcess(item, requiredApps, label));
+async function readFileSource(requiredApps: string[], label: string, path: string, maxAgeMs: number) {
+  const file = await open(path, 'r');
+  try {
+    const info = await file.stat();
+    const freshness = evaluateFreshness(info.mtime.toISOString(), maxAgeMs);
+    if (freshness.state !== 'fresh') return { processes: [], freshness };
+    if (info.size > 1024 * 1024) throw new Error('Snapshot PM2 melebihi 1 MB.');
+    const parsed = parsePm2Jlist(await file.readFile('utf8'));
+    return { processes: parsed.map((item) => mapProcess(item, requiredApps, label)), freshness };
+  } finally { await file.close(); }
 }
 
 export async function getPm2HealthSnapshot(): Promise<Pm2HealthSnapshot> {
   const requiredApps = readCsvEnv('PM2_REQUIRED_APPS', DEFAULT_REQUIRED_APPS);
   const ignoredApps = readCsvEnv('PM2_IGNORED_APPS', []);
   const primarySource = sourceLabel();
-  const sources: Array<{ label: string; available: boolean; error: string | null }> = [];
+  const sources: Pm2HealthSnapshot['sources'] = [];
   const processes: Pm2ProcessHealth[] = [];
+  let policies: Pm2AppPolicy[] = [];
+  let policySource: Pm2HealthSnapshot['policySource'] = 'environment';
+  let policyAvailable = true;
+  try {
+    const result = await listConfigItems('pm2_app');
+    if (result.storageEnabled) {
+      policySource = 'database';
+      policies = result.items.filter((item) => item.enabled).map((item) => item.payload as unknown as Pm2AppPolicy);
+    }
+  } catch { policyAvailable = false; }
+  const rawAge = Number(process.env.PM2_SNAPSHOT_MAX_AGE_MS || 180000);
+  const maxAgeMs = Number.isFinite(rawAge) && rawAge >= 1000 ? rawAge : 180000;
 
   try {
     processes.push(...await readCurrentSource(requiredApps, primarySource));
-    sources.push({ label: primarySource, available: true, error: null });
+    sources.push({ label: primarySource, available: true, error: null, kind: 'local', freshness: evaluateFreshness(new Date().toISOString(), maxAgeMs) });
   } catch (error) {
     sources.push({
       label: primarySource,
       available: false,
       error: error instanceof Error ? error.message : 'Unable to read PM2 process list',
+      kind: 'local', freshness: evaluateFreshness(null, maxAgeMs),
     });
   }
 
   for (const source of parseExtraJlistFiles()) {
+    if (sources.some((item) => item.label === source.label)) {
+      const existing = sources.find((item) => item.label === source.label)!;
+      existing.available = false;
+      existing.error = 'Label source PM2 ganda. Gunakan label unik untuk setiap source.';
+      existing.freshness = evaluateFreshness(null, maxAgeMs);
+      continue;
+    }
     try {
-      processes.push(...await readFileSource(requiredApps, source.label, source.path));
-      sources.push({ label: source.label, available: true, error: null });
+      const snapshot = await readFileSource(requiredApps, source.label, source.path, maxAgeMs);
+      processes.push(...snapshot.processes);
+      const fresh = snapshot.freshness.state === 'fresh';
+      sources.push({ label: source.label, available: fresh, error: fresh ? null : 'Snapshot kedaluwarsa atau waktu file tidak sesuai. Periksa pembaruan snapshot.', kind: 'snapshot', freshness: snapshot.freshness });
     } catch (error) {
       sources.push({
         label: source.label,
         available: false,
         error: error instanceof Error ? error.message : `Unable to read ${source.path}`,
+        kind: 'snapshot', freshness: evaluateFreshness(null, maxAgeMs),
       });
     }
   }
 
-  const visibleProcesses = processes.filter((item) => !isIgnoredProcess(ignoredApps, item.source, item.name));
-  const effectiveRequiredApps = requiredApps.filter((appName) => {
+  const mode = (source: string, name: string) => resolvePm2Policy(source, name, policies, requiredApps, ignoredApps);
+  const visibleProcesses = processes.filter((item) => mode(item.source, item.name) !== 'ignored');
+  const candidates = [...new Set([...requiredApps, ...policies.filter((item) => item.mode === 'required').map((item) => item.source === '*' ? item.name : processKey(item.source, item.name))])];
+  const effectiveRequiredApps = candidates.filter((appName) => {
     const separatorIndex = appName.indexOf(':');
     const source = separatorIndex > 0 ? appName.slice(0, separatorIndex) : primarySource;
     const name = separatorIndex > 0 ? appName.slice(separatorIndex + 1) : appName;
-    return !isIgnoredProcess(ignoredApps, source, name);
+    return mode(source, name) === 'required';
   });
 
+  for (const appName of effectiveRequiredApps) {
+    const separator = appName.indexOf(':');
+    const label = separator > 0 ? appName.slice(0, separator) : primarySource;
+    if (!sources.some((source) => source.label === label)) sources.push({ label, available: false, kind: 'snapshot', error: 'Source ini belum dikonfigurasi. Periksa PM2_EXTRA_JLIST_FILES.', freshness: evaluateFreshness(null, maxAgeMs) });
+  }
+
   appendMissingRequired(visibleProcesses, effectiveRequiredApps, primarySource);
+  for (const item of visibleProcesses) {
+    item.required = mode(item.source, item.name) === 'required';
+    if (!sources.some((source) => source.label === item.source && source.available)) {
+      item.status = 'unknown';
+      item.active = false;
+      item.cpuPercent = item.memoryBytes = item.uptimeMs = null;
+    }
+  }
   visibleProcesses.sort((left, right) => (
     Number(right.required) - Number(left.required) ||
     left.source.localeCompare(right.source) ||
     left.name.localeCompare(right.name)
   ));
-  const requiredDown = visibleProcesses.filter((item) => item.required && !item.active).map((item) => processKey(item.source, item.name));
+  const requiredDown = policyAvailable ? [...new Set(visibleProcesses.filter((item) => item.required && !item.active && sources.some((source) => source.label === item.source && source.available)).map((item) => processKey(item.source, item.name)))] : [];
   const available = sources.some((source) => source.available);
-  const status = requiredDown.length > 0 ? 'critical' : !available ? 'unknown' : visibleProcesses.length === 0 ? 'warning' : 'healthy';
+  const status = !available || !policyAvailable ? 'unknown' : requiredDown.length > 0 ? 'critical' : sources.some((source) => !source.available) || visibleProcesses.length === 0 ? 'warning' : 'healthy';
   const sourceErrors = sources.filter((source) => !source.available).map((source) => `${source.label}: ${source.error}`);
+  if (!policyAvailable) sourceErrors.push('Kebijakan PM2 tersimpan tidak dapat dibaca. Status aplikasi wajib belum dapat dievaluasi.');
 
   return {
     available,
@@ -243,6 +292,10 @@ export async function getPm2HealthSnapshot(): Promise<Pm2HealthSnapshot> {
     requiredDown,
     processes: visibleProcesses,
     sources,
+    policySource,
+    policyAvailable,
+    policyOverrides: policies,
+    environmentPolicy: { requiredApps, ignoredApps },
     error: sourceErrors.length > 0 ? sourceErrors.join('; ') : null,
     timestamp: new Date().toISOString(),
   };
